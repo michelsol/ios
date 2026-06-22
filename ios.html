@@ -1,0 +1,1551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Interface d'Observation des Solutions</title>
+<style>
+  :root {
+    --bg: #f4f5f7;
+    --panel: #ffffff;
+    --border: #d7dbe0;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --text: #1f2937;
+    --muted: #6b7280;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--text);
+    background: var(--bg);
+  }
+  #app {
+    display: flex;
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden;
+  }
+
+  /* ---- Left: PDF pane ---- */
+  #left {
+    width: 50%;
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    background: #e9ebee;
+  }
+  #divider {
+    flex: 0 0 6px;
+    align-self: stretch;
+    cursor: col-resize;
+    background: var(--border);
+  }
+  #divider:hover { background: var(--accent); }
+  #pdfPane {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+  #pdfPane canvas {
+    background: #fff;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.18);
+    max-width: 100%;
+  }
+  #pdfEmpty {
+    color: var(--muted);
+    margin: auto;
+    text-align: center;
+    font-size: 15px;
+    line-height: 1.5;
+  }
+  #pdfBar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+  #pdfBar .pglabel { font-size: 13px; color: var(--muted); }
+  #pageInput {
+    width: 96px;
+    text-align: center;
+    font: inherit;
+    padding: 6px 4px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+  #pdfBar button:disabled { opacity: 0.4; }
+  #btnAssignment { display: inline-flex; align-items: center; justify-content: center; }
+  #btnAssignment svg { width: 18px; height: 18px; display: block; }
+  #onlyPdfLabel {
+    font-size: 13px;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 14px;
+  }
+  #onlyPdfLabel svg { width: 16px; height: 16px; display: block; }
+
+  /* ---- Right: grading pane ---- */
+  #right {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--panel);
+  }
+  #toolbar {
+    flex: 0 0 auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+  #toolbar button {
+    flex: 1 1 120px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #toolbar button svg { width: 20px; height: 20px; display: block; }
+  #studentBar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  #studentBar label {
+    font-weight: 600;
+    font-size: 14px;
+    display: inline-flex;
+    align-items: center;
+  }
+  #studentBar label svg { width: 20px; height: 20px; display: block; }
+  #studentCombo {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  #firstPageInput { flex: 0 0 auto; width: 4.5em; }
+  #btnSetFirstPage { display: inline-flex; align-items: center; justify-content: center; }
+  #btnSetFirstPage svg { width: 16px; height: 16px; display: block; }
+  .fbicon { flex: 0 0 auto; width: 18px; height: 18px; color: var(--muted); }
+  #questions {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 8px 16px;
+    direction: rtl;            /* moves the scrollbar to the left side */
+  }
+  #questions > * { direction: ltr; }  /* keep content left-to-right */
+  #questionsEmpty {
+    color: var(--muted);
+    text-align: center;
+    margin-top: 40px;
+    font-size: 15px;
+    line-height: 1.5;
+  }
+  .question {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    padding: 7px 0;
+    border-bottom: 1px solid #eef0f3;
+  }
+  .combo {
+    flex: 1 1 220px;
+    min-width: 140px;
+    display: flex;
+    align-items: stretch;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: #fff;
+    overflow: hidden;
+  }
+  .combo:focus-within { border-color: var(--accent); }
+  .qcomment {
+    flex: 1 1 auto;
+    min-width: 0;
+    font: inherit;
+    padding: 6px 8px;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+  }
+  .qcomment:focus { outline: none; }
+  .combo-arrow {
+    flex: 0 0 auto;
+    border: 0;
+    border-left: 1px solid var(--border);
+    border-radius: 0;
+    background: #f4f5f7;
+    color: var(--muted);
+    padding: 0 9px;
+    font-size: 11px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .combo-arrow:hover { background: #e9ebee; color: var(--text); }
+  .combo-add, .combo-del {
+    flex: 0 0 auto;
+    border: 0;
+    border-left: 1px solid var(--border);
+    border-radius: 0;
+    background: #f4f5f7;
+    padding: 0 9px;
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .combo-add { color: #15803d; }
+  .combo-add:hover { background: #e7f6ec; }
+  .combo-del { color: #b91c1c; }
+  .combo-del:hover { background: #fdecec; }
+  #comboPopup {
+    position: fixed;
+    z-index: 1000;
+    display: none;
+    max-height: 240px;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.16);
+    font-size: 14px;
+  }
+  #comboPopup.open { display: block; }
+  .combo-item {
+    padding: 7px 10px;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .combo-item:hover, .combo-item.active { background: #eaf1ff; }
+  .combo-empty { padding: 7px 10px; color: var(--muted); }
+  .question .qtitle {
+    flex: 0 0 auto;
+    font-weight: 600;
+    font-size: 14px;
+  }
+  .question .qtitle .qmax {
+    color: var(--muted);
+    font-weight: 400;
+    font-size: 12px;
+    margin-left: 6px;
+  }
+  .options {
+    flex: 0 1 auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .opt {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    min-width: 56px;
+    min-height: 40px;
+    padding: 8px 14px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 15px;
+    user-select: none;
+    background: #fafbfc;
+  }
+  .opt:hover { border-color: var(--accent); background: #f0f5ff; }
+  .opt input {
+    cursor: pointer;
+    margin: 0;
+    width: 18px;
+    height: 18px;
+    transform: scale(1.15);
+  }
+  .opt.checked {
+    border-color: var(--accent);
+    background: #eaf1ff;
+    font-weight: 600;
+  }
+  .qremove {
+    flex: 0 0 auto;
+    align-self: center;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--muted);
+    padding: 4px 8px;
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .qremove:hover {
+    color: #b91c1c;
+    border-color: #f1c6c6;
+    background: #fdecec;
+  }
+  #addQuestionBar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+  #addQuestionBar input {
+    font: inherit;
+    padding: 7px 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: #fff;
+    color: var(--text);
+  }
+  #aqTitle { flex: 2 1 120px; min-width: 0; }
+  #aqScores { flex: 3 1 160px; min-width: 0; }
+  #addQuestionBar button { flex: 0 0 auto; }
+  #totalBar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+    font-size: 18px;
+    font-weight: 700;
+    background: #f9fafb;
+  }
+  #totalBar .max { color: var(--muted); font-weight: 500; }
+  #totalBar .vsep { flex: 0 0 auto; align-self: stretch; width: 1px; background: var(--border); }
+  .totalLabel { flex: 0 0 auto; white-space: nowrap; }
+  #feedbackCombo { flex: 1 1 auto; }
+  #globalFeedback { font-weight: 400; font-size: 14px; }
+  .zoomctl {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--muted);
+  }
+  .zoomctl button {
+    background: #fff;
+    color: var(--text);
+    padding: 4px 10px;
+    line-height: 1;
+    font-size: 16px;
+  }
+  .zoomctl button:hover { background: #f0f2f5; }
+  .zoomctl .lens { width: 16px; height: 16px; display: block; }
+
+  /* ---- Shared controls ---- */
+  button {
+    font: inherit;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--accent);
+    color: #fff;
+    cursor: pointer;
+  }
+  button:hover { background: var(--accent-hover); }
+  button.secondary {
+    background: #fff;
+    color: var(--text);
+  }
+  button.secondary:hover { background: #f0f2f5; }
+  button.nav {
+    background: #fff;
+    color: var(--text);
+    padding: 8px 10px;
+    flex: 0 0 auto;
+  }
+  button.nav:hover { background: #f0f2f5; }
+  #btnPrev, #btnNext { padding-left: 22px; padding-right: 22px; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  select {
+    font: inherit;
+    padding: 7px 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: #fff;
+    color: var(--text);
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- LEFT: PDF -->
+  <div id="left">
+    <div id="pdfBar">
+      <button id="btnAssignment" class="secondary" aria-label="Open PDF"
+        title="Open a list of assignments as a single PDF file">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+        </svg>
+      </button>
+      <button id="btnPagePrev" class="nav" title="Previous page">&#9650;</button>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+           aria-label="Page" style="flex:0 0 auto">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+      </svg>
+      <input type="number" id="pageInput" min="1" value="1" disabled>
+      <span class="pglabel" id="pageCount">/ 0</span>
+      <button id="btnPageNext" class="nav" title="Next page">&#9660;</button>
+      <span class="zoomctl" style="margin-left:14px;">
+        <svg class="lens" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <button id="btnPdfZoomOut" title="Zoom out PDF">&#8722;</button>
+        <span id="pdfZoomLabel">100%</span>
+        <button id="btnPdfZoomIn" title="Zoom in PDF">+</button>
+      </span>
+      <label id="onlyPdfLabel" title="Scroll PDF from anywhere">
+        <input type="checkbox" id="onlyScrollPdf">
+        <svg width="1em" height="1em" viewBox="0 0 24 24">
+          <title xmlns="">scroll-vertical-lock</title>
+          <path fill="currentColor"
+            d="M18.8 11V9.5C18.8 8.1 17.4 7 16 7s-2.8 1.1-2.8 2.5V11c-.6 0-1.2.6-1.2 1.2v3.5c0 .7.6 1.3 1.2 1.3h5.5c.7 0 1.3-.6 1.3-1.2v-3.5c0-.7-.6-1.3-1.2-1.3m-1.3 0h-3V9.5c0-.8.7-1.3 1.5-1.3s1.5.5 1.5 1.3zM9 6h3L8 2L4 6h3v12H4l4 4l4-4H9z" />
+        </svg>
+      </label>
+    </div>
+    <div id="pdfPane">
+      <!-- <div id="pdfEmpty">No assignment loaded.<br>Click "Open PDF" to open a PDF.</div> -->
+    </div>
+  </div>
+
+  <!-- Draggable divider -->
+  <div id="divider"></div>
+
+  <!-- RIGHT: grading -->
+  <div id="right">
+    <div id="toolbar">
+      <button id="btnImportGrades" class="secondary" aria-label="Load" title="Import grades in CSV format">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+        </svg>
+      </button>
+      <button id="btnSave" aria-label="Save" title="Save grades in CSV format">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+          <polyline points="17 21 17 13 7 13 7 21"/>
+          <polyline points="7 3 7 8 15 8"/>
+        </svg>
+      </button>
+    </div>
+    <div id="studentBar">
+      <button id="btnPrev" class="nav" title="Previous student">&#9650;</button>
+      <button id="btnNext" class="nav" title="Next student">&#9660;</button>
+      <button id="btnSetFirstPage" class="nav" title="Set current page as student's first page" aria-label="Use current page">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+        </svg>
+      </button>
+      <input type="number" id="firstPageInput" min="1" title="First page number for this student">
+      <label id="jumpLabel" title="Jump to student's first page on selection"><input type="checkbox" id="jumpToPage" checked></label>
+      <label for="studentSelect" aria-label="Student">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+          <circle cx="12" cy="7" r="4"/>
+        </svg>
+      </label>
+      <div class="combo" id="studentCombo" title="Student's name">
+        <input type="text" id="studentSelect" class="qcomment" autocomplete="off" placeholder="…">
+        <button type="button" id="studentArrow" class="combo-arrow" tabindex="-1">&#9662;</button>
+      </div>
+      <button id="btnAddStudent" class="nav" title="Add a student">+</button>
+      <button id="btnRemoveStudent" class="nav" title="Remove current student">&#8722;</button>
+    </div>
+    <div id="questions">
+      <!-- <div id="questionsEmpty">No questions yet.<br>Click "Load" to open a file, or add a question below.</div> -->
+      <div id="addQuestionBar">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+             aria-hidden="true" style="flex:0 0 auto;color:var(--muted)">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          <text x="12" y="13" text-anchor="middle" stroke="none" fill="currentColor"
+                font-size="9" font-weight="bold" font-family="sans-serif">?</text>
+        </svg>
+        <input type="text" id="aqTitle" placeholder="1. (a)" title="Question title">
+        <input type="text" id="aqScores" placeholder="0 0.5 1 1.5 2" title="Possible scores">
+        <button id="aqAdd" aria-label="Add question" title="Add question">+</button>
+      </div>
+    </div>
+    <div id="totalBar">
+      <span class="totalLabel"><span id="totalValue">0</span><span class="max" id="totalMax"> / 0</span></span>
+      <span class="vsep"></span>
+      <svg class="fbicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        <line x1="8" y1="9" x2="16" y2="9"/><line x1="8" y1="13" x2="13" y2="13"/>
+      </svg>
+      <div class="combo" id="feedbackCombo">
+        <input type="text" id="globalFeedback" class="qcomment" autocomplete="off" placeholder="">
+        <button type="button" id="feedbackAdd" class="combo-add" tabindex="-1"
+                title="Add this feedback to the suggestion list">+</button>
+        <button type="button" id="feedbackDel" class="combo-del" tabindex="-1"
+                title="Remove this feedback from the suggestion list">&#8722;</button>
+        <button type="button" id="feedbackArrow" class="combo-arrow" tabindex="-1">&#9662;</button>
+      </div>
+      <span class="zoomctl">
+        <svg class="lens" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <button id="btnGradeZoomOut" title="Zoom out grading">&#8722;</button>
+        <span id="gradeZoomLabel">100%</span>
+        <button id="btnGradeZoomIn" title="Zoom in grading">+</button>
+      </span>
+    </div>
+  </div>
+</div>
+
+<!-- Hidden file inputs -->
+<input type="file" id="fileAssignment" accept="application/pdf" style="display:none">
+<input type="file" id="fileGrades" accept=".csv,text/csv" style="display:none">
+
+<!-- Shared suggestion popup for every question's comment combobox -->
+<div id="comboPopup"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+"use strict";
+
+// ---- PDF.js setup (CDN). To run fully offline, replace these two URLs with
+// local copies of pdf.min.js (script tag above) and pdf.worker.min.js. ----
+const PDF_WORKER_SRC = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+if (window.pdfjsLib) {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = PDF_WORKER_SRC;
+}
+
+// ---- App state ----
+let schemeQuestions = [];      // [{ title, max, scores:[..] }]
+let students = [];             // ["e1", "e2", ...]
+let gradesByStudent = {};      // { name: { title: selectedScore } }
+let commentsByStudent = {};    // { name: { title: commentString } }
+let feedbackByStudent = {};    // { name: globalFeedbackString }
+let firstPageByStudent = {};   // { name: 1-based PDF page where this student's work starts }
+let currentStudent = "";       // current selected student name ("" if none)
+
+const commentBank = [];        // unique comments ever used (suggestion list)
+const commentBankSet = new Set();
+
+const feedbackBank = [];       // unique global feedbacks ever used (separate suggestion list)
+const feedbackBankSet = new Set();
+
+const OUT_DELIM = ";";
+
+// ---- DOM refs ----
+const pdfPane       = document.getElementById("pdfPane");
+const pdfEmpty      = document.getElementById("pdfEmpty");
+const pageInput     = document.getElementById("pageInput");
+const onlyScrollPdf = document.getElementById("onlyScrollPdf");
+const pageCountEl   = document.getElementById("pageCount");
+const questionsEl   = document.getElementById("questions");
+const studentSelect = document.getElementById("studentSelect");
+const studentArrow  = document.getElementById("studentArrow");
+const firstPageInput = document.getElementById("firstPageInput");
+const btnSetFirstPage = document.getElementById("btnSetFirstPage");
+const jumpToPage    = document.getElementById("jumpToPage");
+const totalValueEl  = document.getElementById("totalValue");
+const totalMaxEl    = document.getElementById("totalMax");
+const comboPopup    = document.getElementById("comboPopup");
+const addQuestionBar = document.getElementById("addQuestionBar");
+const globalFeedback = document.getElementById("globalFeedback");
+const feedbackAdd   = document.getElementById("feedbackAdd");
+const feedbackDel   = document.getElementById("feedbackDel");
+const feedbackArrow = document.getElementById("feedbackArrow");
+let activeComboInput = null;   // the comment input the popup is currently attached to
+
+// =====================================================================
+// CSV helpers
+// =====================================================================
+
+// Detect delimiter (";" preferred, else "," ) from the first non-empty line.
+function detectDelimiter(text) {
+  const firstLine = text.split(/\r?\n/).find(l => l.trim().length > 0) || "";
+  return firstLine.indexOf(";") >= 0 ? ";" : ",";
+}
+
+// Parse CSV text into an array of rows (each row an array of trimmed cells).
+// Quote-aware (RFC 4180): "double quoted" fields may contain the delimiter,
+// escaped quotes (""), and embedded newlines. Fully-empty rows are dropped.
+function parseCSV(text) {
+  const delim = detectDelimiter(text);
+  const rows = [];
+  let row = [], field = "", inQuotes = false, i = 0;
+  const pushField = () => { row.push(field.trim()); field = ""; };
+  const pushRow = () => {
+    pushField();
+    if (!row.every(c => c === "")) rows.push(row);
+    row = [];
+  };
+  while (i < text.length) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i += 2; continue; }
+        inQuotes = false; i++; continue;
+      }
+      field += c; i++; continue;
+    }
+    if (c === '"') { inQuotes = true; i++; continue; }
+    if (c === delim) { pushField(); i++; continue; }
+    if (c === '\r') { i++; continue; }
+    if (c === '\n') { pushRow(); i++; continue; }
+    field += c; i++;
+  }
+  if (field !== "" || row.length) pushRow();
+  return rows;
+}
+
+// Quote a value for CSV output when it contains the delimiter, a quote, or a newline.
+function csvCell(s) {
+  s = (s === null || s === undefined) ? "" : String(s);
+  if (s.indexOf(OUT_DELIM) >= 0 || s.indexOf('"') >= 0 || /[\r\n]/.test(s)) {
+    return '"' + s.replace(/"/g, '""') + '"';
+  }
+  return s;
+}
+
+// ---- Comments ----
+
+// Add an entry to a suggestion list (deduped). The popup reads the list fresh
+// each time it opens, so there is nothing else to refresh.
+function bankAdd(bank, set, s) {
+  s = (s || "").trim();
+  if (!s || set.has(s)) return;
+  set.add(s);
+  bank.push(s);
+}
+
+// Remove an entry from a suggestion list (exact, trimmed match). No-op if absent.
+function bankRemove(bank, set, s) {
+  s = (s || "").trim();
+  if (!set.has(s)) return;
+  set.delete(s);
+  const i = bank.indexOf(s);
+  if (i >= 0) bank.splice(i, 1);
+}
+
+// Format a number for display/output without float noise (e.g. 0.7500001 -> "0.75").
+function fmt(n) {
+  if (n === "" || n === null || n === undefined) return "";
+  const rounded = Math.round(n * 1e6) / 1e6;
+  return String(rounded);
+}
+
+// =====================================================================
+// Grading scheme
+// =====================================================================
+
+// Parse a possible-scores string ("0 0.25 0.5") into a sorted, deduped number list.
+function parseScoreList(text) {
+  return Array.from(new Set(
+    (text || "").trim().split(/[\s;]+/).filter(Boolean)
+      .map(s => parseFloat(s)).filter(n => !isNaN(n))
+  )).sort((a, b) => a - b);
+}
+
+// A fresh grade map with each question set to its lowest score option.
+function defaultGrades() {
+  const g = {};
+  for (const q of schemeQuestions) g[q.title] = q.scores[0];
+  return g;
+}
+
+// Add a question to the scheme from the inline form, then re-render.
+function addQuestion() {
+  const aqTitle = document.getElementById("aqTitle");
+  const aqScores = document.getElementById("aqScores");
+
+  const title = aqTitle.value.trim();
+  if (!title) { alert("Enter a question title."); aqTitle.focus(); return; }
+  if (schemeQuestions.some(q => q.title === title)) {
+    alert('A question titled "' + title + '" already exists.'); aqTitle.focus(); return;
+  }
+  // Whitespace/";"-separated, dot decimals; deduped and sorted ascending.
+  const scores = parseScoreList(aqScores.value);
+  if (scores.length === 0) { alert("Enter at least one numeric score (e.g. 0 0.5 1)."); aqScores.focus(); return; }
+  const max = scores[scores.length - 1]; // max = highest possible score
+
+  saveCurrentStudent();
+  schemeQuestions.push({ title, max, scores });
+  for (const name of students) {
+    if (!gradesByStudent[name]) gradesByStudent[name] = {};
+    gradesByStudent[name][title] = scores[0];
+    if (!commentsByStudent[name]) commentsByStudent[name] = {};
+  }
+  aqTitle.value = ""; aqScores.value = "";
+  renderQuestions();
+  loadStudent(currentStudent);
+  aqTitle.focus();
+}
+
+// Remove a question from the scheme and drop its data for every student.
+function removeQuestion(title) {
+  if (!confirm('Remove question "' + title + '"? Its scores and comments for all students will be lost.')) return;
+  saveCurrentStudent();
+  const idx = schemeQuestions.findIndex(q => q.title === title);
+  if (idx < 0) return;
+  schemeQuestions.splice(idx, 1);
+  for (const name of students) {
+    if (gradesByStudent[name]) delete gradesByStudent[name][title];
+    if (commentsByStudent[name]) delete commentsByStudent[name][title];
+  }
+  renderQuestions();
+  loadStudent(currentStudent);
+}
+
+// =====================================================================
+// Question rendering
+// =====================================================================
+
+// A fresh speech-bubble icon node, marking a feedback/comment field.
+function feedbackIcon() {
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("class", "fbicon");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "2");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+  svg.setAttribute("aria-hidden", "true");
+  svg.innerHTML =
+    '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>' +
+    '<line x1="8" y1="9" x2="16" y2="9"/><line x1="8" y1="13" x2="13" y2="13"/>';
+  return svg;
+}
+
+function renderQuestions() {
+  questionsEl.innerHTML = "";
+  if (schemeQuestions.length === 0) {
+    const empty = document.createElement("div");
+    empty.id = "questionsEmpty";
+    // empty.innerHTML = 'No questions yet.<br>Click "Load" to open a file, or add a question below.';
+    empty.innerHTML = '';
+    questionsEl.appendChild(empty);
+    questionsEl.appendChild(addQuestionBar);
+    updateTotalMax();
+    recomputeTotal();
+    return;
+  }
+
+  for (const q of schemeQuestions) {
+    const block = document.createElement("div");
+    block.className = "question";
+
+    const title = document.createElement("div");
+    title.className = "qtitle";
+    title.textContent = q.title;
+    const maxSpan = document.createElement("span");
+    maxSpan.className = "qmax";
+    maxSpan.textContent = "/ " + fmt(q.max);
+    title.appendChild(maxSpan);
+    block.appendChild(title);
+
+    const options = document.createElement("div");
+    options.className = "options";
+    for (const score of q.scores) {
+      const label = document.createElement("label");
+      label.className = "opt";
+
+      const radio = document.createElement("input");
+      radio.type = "radio";
+      radio.name = "q_" + q.title;
+      radio.value = String(score);
+      radio.dataset.title = q.title;
+      radio.addEventListener("change", onRadioChange);
+
+      const txt = document.createElement("span");
+      txt.textContent = fmt(score);
+
+      label.appendChild(radio);
+      label.appendChild(txt);
+      options.appendChild(label);
+    }
+    block.appendChild(options);
+
+    block.appendChild(feedbackIcon());
+
+    const combo = document.createElement("div");
+    combo.className = "combo";
+    const comment = document.createElement("input");
+    comment.type = "text";
+    comment.className = "qcomment";
+    comment.placeholder = "";
+    comment.dataset.title = q.title;
+    comment.autocomplete = "off";
+    comment._comboItems = () => commentBank;
+    comment._comboSelect = (val) => { comment.value = val; onCommentChange(comment); };
+    comment.addEventListener("change", () => onCommentChange(comment));
+    comment.addEventListener("focus", () => openCombo(comment));
+    const arrow = document.createElement("button");
+    arrow.type = "button";
+    arrow.className = "combo-arrow";
+    arrow.tabIndex = -1;
+    arrow.textContent = "▾";
+    arrow.addEventListener("mousedown", e => {
+      e.preventDefault(); // keep focus where it is
+      (activeComboInput === comment && comboPopup.classList.contains("open"))
+        ? closeCombo() : openCombo(comment);
+    });
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.className = "combo-add";
+    addBtn.tabIndex = -1;
+    addBtn.title = "Add this comment to the suggestion list";
+    addBtn.textContent = "+";
+    addBtn.addEventListener("mousedown", e => {
+      e.preventDefault();
+      bankAdd(commentBank, commentBankSet, comment.value);
+      if (activeComboInput === comment && comboPopup.classList.contains("open")) openCombo(comment);
+    });
+    const delBtn = document.createElement("button");
+    delBtn.type = "button";
+    delBtn.className = "combo-del";
+    delBtn.tabIndex = -1;
+    delBtn.title = "Remove this comment from the suggestion list";
+    delBtn.textContent = "−"; // U+2212 minus, matching the rest of the UI
+    delBtn.addEventListener("mousedown", e => {
+      e.preventDefault();
+      bankRemove(commentBank, commentBankSet, comment.value);
+      if (activeComboInput === comment && comboPopup.classList.contains("open")) openCombo(comment);
+    });
+    combo.appendChild(comment);
+    combo.appendChild(addBtn);
+    combo.appendChild(delBtn);
+    combo.appendChild(arrow);
+    block.appendChild(combo);
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "qremove";
+    remove.title = "Remove question";
+    remove.textContent = "✕";
+    remove.dataset.title = q.title;
+    block.appendChild(remove);
+
+    questionsEl.appendChild(block);
+  }
+
+  questionsEl.appendChild(addQuestionBar); // form sits at the bottom of the list
+  updateTotalMax();
+  loadStudent(currentStudent); // apply current student's selections
+}
+
+// Save a typed/selected comment for the current student and add it to the bank.
+function onCommentChange(input) {
+  const title = input.dataset.title;
+  const value = input.value.trim();
+  if (currentStudent) {
+    if (!commentsByStudent[currentStudent]) commentsByStudent[currentStudent] = {};
+    commentsByStudent[currentStudent][title] = value;
+  }
+}
+
+// ---- Comment suggestion combobox (custom; shows the full bank, unfiltered) ----
+
+function openCombo(input) {
+  activeComboInput = input;
+  comboPopup.innerHTML = "";
+  const items = (input._comboItems && input._comboItems()) || [];
+  if (items.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "combo-empty";
+    empty.textContent = input._comboEmpty || "—";
+    comboPopup.appendChild(empty);
+  } else {
+    for (const s of items) {
+      const item = document.createElement("div");
+      item.className = "combo-item";
+      item.textContent = s;
+      item.title = s;
+      item.addEventListener("mousedown", e => { e.preventDefault(); selectComboItem(s); });
+      comboPopup.appendChild(item);
+    }
+  }
+  positionCombo();
+  comboPopup.classList.add("open");
+}
+
+function positionCombo() {
+  if (!activeComboInput) return;
+  const combo = activeComboInput.closest(".combo");
+  const r = combo.getBoundingClientRect();
+  comboPopup.style.left = r.left + "px";
+  comboPopup.style.width = r.width + "px";
+  const spaceBelow = window.innerHeight - r.bottom;
+  const spaceAbove = r.top;
+  // Flip the popup above the input when there's little room below (e.g. the
+  // feedback combo sits in the bottom bar) and more room above.
+  if (spaceBelow < 160 && spaceAbove > spaceBelow) {
+    comboPopup.style.top = "";
+    comboPopup.style.bottom = (window.innerHeight - r.top) + "px";
+    comboPopup.style.maxHeight = Math.max(120, spaceAbove - 8) + "px";
+  } else {
+    comboPopup.style.bottom = "";
+    comboPopup.style.top = r.bottom + "px";
+    // Cap to the space available below the input so the scrollbar is always reachable.
+    comboPopup.style.maxHeight = Math.max(120, spaceBelow - 8) + "px";
+  }
+}
+
+function selectComboItem(value) {
+  const input = activeComboInput;
+  if (input && input._comboSelect) input._comboSelect(value);
+  closeCombo();
+}
+
+function closeCombo() {
+  comboPopup.classList.remove("open");
+  activeComboInput = null;
+}
+
+function onRadioChange(e) {
+  selectOption(e.target);
+}
+
+// Apply a radio selection: store it for the current student and refresh the UI.
+function selectOption(input) {
+  if (!input) return;
+  input.checked = true;
+  const title = input.dataset.title;
+  const value = parseFloat(input.value);
+  if (currentStudent && gradesByStudent[currentStudent]) {
+    gradesByStudent[currentStudent][title] = value;
+  }
+  refreshCheckedStyles();
+  recomputeTotal();
+}
+
+// Sync the ".checked" highlight class with the actually-selected radios.
+function refreshCheckedStyles() {
+  questionsEl.querySelectorAll(".opt").forEach(opt => {
+    const input = opt.querySelector("input");
+    opt.classList.toggle("checked", input.checked);
+  });
+}
+
+// Sum a student's points: their selected score per question, defaulting to the
+// first (lowest) option where nothing is selected. Pure — also used for CSV export.
+function computeTotal(name) {
+  const grades = gradesByStudent[name] || {};
+  let sum = 0;
+  for (const q of schemeQuestions) {
+    const v = (typeof grades[q.title] === "number") ? grades[q.title] : q.scores[0];
+    if (typeof v === "number" && !isNaN(v)) sum += v;
+  }
+  return sum;
+}
+
+function recomputeTotal() {
+  if (schemeQuestions.length === 0) {
+    totalValueEl.textContent = "0";
+    return;
+  }
+  totalValueEl.textContent = fmt(computeTotal(currentStudent));
+}
+
+function updateTotalMax() {
+  if (schemeQuestions.length === 0) {
+    totalMaxEl.textContent = " / 0";
+    return;
+  }
+  const maxSum = schemeQuestions.reduce((acc, q) => acc + (isNaN(q.max) ? 0 : q.max), 0);
+  totalMaxEl.textContent = " / " + fmt(maxSum);
+}
+
+// =====================================================================
+// Students & per-student state
+// =====================================================================
+
+// Add a single student by name (from the "+" button).
+function addStudent() {
+  const name = (studentSelect.value || "").trim();
+  if (!name) return;
+  if (students.indexOf(name) >= 0) {
+    saveCurrentStudent();
+    loadStudent(name);
+    updateNavButtons();
+    return;
+  }
+  saveCurrentStudent();
+  students.push(name);
+  gradesByStudent[name] = schemeQuestions.length ? defaultGrades() : {};
+  commentsByStudent[name] = {};
+  feedbackByStudent[name] = "";
+  const fp = parseInt(firstPageInput.value, 10) || (pageCanvases.length ? currentVisiblePage() : 0);
+  if (fp >= 1) firstPageByStudent[name] = fp;
+  studentSelect.value = name;
+  loadStudent(name);
+  updateNavButtons();
+}
+
+// Remove the currently selected student (from the "−" button).
+function removeStudent() {
+  if (!currentStudent || students.length === 0) {
+    alert("No student selected to remove.");
+    return;
+  }
+  if (!confirm('Remove student "' + currentStudent + '" and their grades?')) return;
+  const idx = students.indexOf(currentStudent);
+  delete gradesByStudent[currentStudent];
+  delete commentsByStudent[currentStudent];
+  delete feedbackByStudent[currentStudent];
+  delete firstPageByStudent[currentStudent];
+  students.splice(idx, 1);
+  if (students.length === 0) {
+    currentStudent = "";
+    studentSelect.value = "";
+    firstPageInput.value = "";
+    loadStudent("");
+    updateNavButtons();
+    return;
+  }
+  const next = students[Math.min(idx, students.length - 1)];
+  currentStudent = next;
+  studentSelect.value = next;
+  loadStudent(next);
+  updateNavButtons();
+}
+
+// Zoom the grading panel in/out (CSS zoom on the questions container).
+let gradeZoom = 1.0;
+function zoomGrade(factor) {
+  gradeZoom = Math.min(2, Math.max(0.5, gradeZoom * factor));
+  questionsEl.style.zoom = gradeZoom;
+  document.getElementById("gradeZoomLabel").textContent = Math.round(gradeZoom * 100) + "%";
+}
+
+// Load a unified CSV that defines the scheme (per question: "<title>", "<title>-comment",
+// "<title>-scores") and the students/grades/comments. Replaces all current state.
+function loadFile(text) {
+  const rows = parseCSV(text);
+  if (rows.length === 0) { alert("The file looks empty."); return; }
+  const header = rows[0];
+
+  // Optional metadata columns near the start (absent in older files), located by name.
+  // "total" is informational only: it is located so it can be skipped, never parsed.
+  let firstPageIndex = -1, feedbackIndex = -1, totalIndex = -1;
+  for (let k = 1; k < header.length; k++) {
+    const h = (header[k] || "").trim().toLowerCase();
+    if (h === "first_page" && firstPageIndex < 0) firstPageIndex = k;
+    else if (h === "feedback" && feedbackIndex < 0) feedbackIndex = k;
+    else if (h === "total" && totalIndex < 0) totalIndex = k;
+  }
+
+  // Classify columns (from index 1) by suffix; build question order from score columns.
+  const scoreCols = [];    // { title, index }
+  const commentByTitle = {}; // title -> column index
+  const scoresByTitle = {};  // title -> column index
+  for (let k = 1; k < header.length; k++) {
+    if (k === feedbackIndex || k === firstPageIndex || k === totalIndex) continue; // not a question column
+    const h = (header[k] || "").trim();
+    if (!h) continue;
+    if (/-comment$/i.test(h)) commentByTitle[h.replace(/-comment$/i, "")] = k;
+    else if (/-scores$/i.test(h)) scoresByTitle[h.replace(/-scores$/i, "")] = k;
+    else scoreCols.push({ title: h, index: k });
+  }
+
+  const data = rows.slice(1);
+  const firstNonEmpty = idx => {
+    if (idx === undefined) return "";
+    for (const row of data) { const c = (row[idx] || "").trim(); if (c) return c; }
+    return "";
+  };
+
+  // Rebuild the scheme from the score columns + their "-scores" column.
+  const newScheme = scoreCols.map(c => {
+    let scores = parseScoreList(firstNonEmpty(scoresByTitle[c.title]));
+    if (scores.length === 0) {
+      // Fallback: distinct selected values observed for this question, else [0].
+      scores = parseScoreList(data.map(r => r[c.index]).filter(Boolean).join(" "));
+      if (scores.length === 0) scores = [0];
+    }
+    return { title: c.title, max: scores[scores.length - 1], scores };
+  });
+
+  // Replace all state.
+  schemeQuestions = newScheme;
+  students = [];
+  gradesByStudent = {};
+  commentsByStudent = {};
+  feedbackByStudent = {};
+  firstPageByStudent = {};
+  commentBank.length = 0;
+  commentBankSet.clear();
+
+  for (const row of data) {
+    const name = (row[0] || "").trim();
+    if (!name) continue; // skip the scheme-only row (empty student name)
+    if (students.indexOf(name) < 0) students.push(name);
+    const grades = gradesByStudent[name] || (gradesByStudent[name] = {});
+    const cm = commentsByStudent[name] || (commentsByStudent[name] = {});
+    feedbackByStudent[name] = feedbackIndex >= 0 ? (row[feedbackIndex] || "").trim() : "";
+    if (firstPageIndex >= 0) {
+      const fp = parseInt((row[firstPageIndex] || "").trim(), 10);
+      if (fp >= 1) firstPageByStudent[name] = fp;
+    }
+    for (const c of scoreCols) {
+      const cell = (row[c.index] || "").trim();
+      if (cell === "") continue;
+      const v = parseFloat(cell);
+      if (!isNaN(v)) grades[c.title] = v;
+    }
+    for (const title in commentByTitle) {
+      const cell = (row[commentByTitle[title]] || "").trim();
+      if (!cell) continue;
+      cm[title] = cell;
+    }
+  }
+
+  currentStudent = students.length ? students[0] : "";
+  studentSelect.value = currentStudent;
+  renderQuestions();
+  loadStudent(currentStudent);
+  updateNavButtons();
+}
+
+// Save the radios + comments currently shown into the current student's state.
+function saveCurrentStudent() {
+  if (!currentStudent || !gradesByStudent[currentStudent]) return;
+  const grades = gradesByStudent[currentStudent];
+  for (const q of schemeQuestions) {
+    const checked = questionsEl.querySelector('input[name="q_' + cssEscape(q.title) + '"]:checked');
+    if (checked) grades[q.title] = parseFloat(checked.value);
+  }
+  const comments = commentsByStudent[currentStudent] || (commentsByStudent[currentStudent] = {});
+  questionsEl.querySelectorAll(".qcomment").forEach(input => {
+    comments[input.dataset.title] = input.value.trim();
+  });
+  feedbackByStudent[currentStudent] = globalFeedback.value;
+}
+
+// Apply a student's stored selections to the radios and update the total.
+function loadStudent(name) {
+  currentStudent = name || "";
+  if (currentStudent) studentSelect.value = currentStudent;
+
+  globalFeedback.value = (currentStudent && feedbackByStudent[currentStudent]) || "";
+  const grades = (currentStudent && gradesByStudent[currentStudent]) || {};
+  const comments = (currentStudent && commentsByStudent[currentStudent]) || {};
+  for (const q of schemeQuestions) {
+    // Fall back to the lowest option so the radio is always visibly pre-selected.
+    const value = (typeof grades[q.title] === "number") ? grades[q.title] : q.scores[0];
+    const radios = questionsEl.querySelectorAll('input[name="q_' + cssEscape(q.title) + '"]');
+    radios.forEach(r => { r.checked = (parseFloat(r.value) === value); });
+    const cinput = questionsEl.querySelector('.qcomment[data-title="' + cssEscape(q.title) + '"]');
+    if (cinput) cinput.value = comments[q.title] || "";
+  }
+  refreshCheckedStyles();
+  recomputeTotal();
+
+  // Reflect this student's first PDF page, and optionally jump the viewer there.
+  const fp = currentStudent ? parseInt(firstPageByStudent[currentStudent], 10) : NaN;
+  firstPageInput.value = fp >= 1 ? fp : "";
+  if (currentStudent && jumpToPage.checked && fp >= 1) goToPage(fp);
+}
+
+function moveStudent(delta) {
+  if (students.length === 0) return;
+  saveCurrentStudent();
+  let idx = students.indexOf(currentStudent);
+  if (idx < 0) idx = 0;
+  idx = Math.min(students.length - 1, Math.max(0, idx + delta));
+  loadStudent(students[idx]);
+  updateNavButtons();
+}
+
+function updateNavButtons() {
+  const idx = students.indexOf(currentStudent);
+  document.getElementById("btnPrev").disabled = (students.length === 0 || idx <= 0);
+  document.getElementById("btnNext").disabled = (students.length === 0 || idx >= students.length - 1);
+}
+
+// Minimal CSS.escape fallback for use in attribute selectors.
+function cssEscape(s) {
+  if (window.CSS && CSS.escape) return CSS.escape(s);
+  return String(s).replace(/["\\\]\[#.:>+~*^$|()'`= ]/g, "\\$&");
+}
+
+// =====================================================================
+// PDF rendering
+// =====================================================================
+
+let pageCanvases = [];      // one canvas element per rendered page
+let currentPdfDoc = null;   // the loaded PDF.js document
+let pdfZoom = 1.0;          // user zoom multiplier
+const PDF_BASE_SCALE = 1.5; // scale at 100%
+let renderToken = 0;        // guards against overlapping re-renders
+
+async function renderPdf(arrayBuffer) {
+  if (!window.pdfjsLib) {
+    alert("PDF library failed to load. Check your internet connection (PDF.js is loaded from a CDN).");
+    return;
+  }
+  try {
+    currentPdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    pdfZoom = 1.0;
+    await drawPages(1);
+  } catch (err) {
+    currentPdfDoc = null;
+    pageCanvases = [];
+    pdfPane.innerHTML = "";
+    pageInput.disabled = true;
+    pageInput.value = 1;
+    pageCountEl.textContent = "/ 0";
+    document.getElementById("pdfZoomLabel").textContent = "100%";
+    updatePageControls();
+    const msg = document.createElement("div");
+    msg.id = "pdfEmpty";
+    msg.textContent = "Could not render this PDF: " + (err && err.message ? err.message : err);
+    pdfPane.appendChild(msg);
+  }
+}
+
+// Render all pages of the current document at the current zoom, then scroll to
+// targetPage. Re-entrant: a newer call cancels an in-flight one via renderToken.
+async function drawPages(targetPage) {
+  if (!currentPdfDoc) return;
+  const token = ++renderToken;
+  pdfPane.innerHTML = "";
+  pageCanvases = [];
+  const scale = PDF_BASE_SCALE * pdfZoom;
+  for (let pageNum = 1; pageNum <= currentPdfDoc.numPages; pageNum++) {
+    const page = await currentPdfDoc.getPage(pageNum);
+    if (token !== renderToken) return; // a newer render superseded this one
+    const viewport = page.getViewport({ scale });
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    pdfPane.appendChild(canvas);
+    pageCanvases.push(canvas);
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    if (token !== renderToken) return;
+  }
+  pageInput.disabled = false;
+  pageInput.max = currentPdfDoc.numPages;
+  pageCountEl.textContent = "/ " + currentPdfDoc.numPages;
+  document.getElementById("pdfZoomLabel").textContent = Math.round(pdfZoom * 100) + "%";
+  goToPage(targetPage || 1);
+}
+
+function zoomPdf(factor) {
+  if (!currentPdfDoc) return;
+  const keepPage = parseInt(pageInput.value, 10) || 1;
+  pdfZoom = Math.min(3, Math.max(0.4, pdfZoom * factor));
+  drawPages(keepPage);
+}
+
+// Scroll so the given 1-based page sits at the top of the PDF pane.
+function goToPage(n) {
+  if (pageCanvases.length === 0) return;
+  n = Math.min(pageCanvases.length, Math.max(1, n));
+  const canvas = pageCanvases[n - 1];
+  pdfPane.scrollTop = canvas.offsetTop - pdfPane.offsetTop;
+  pageInput.value = n;
+  updatePageControls();
+}
+
+// Work out which page is currently most in view (from scroll position).
+function currentVisiblePage() {
+  if (pageCanvases.length === 0) return 1;
+  const mid = pdfPane.scrollTop + pdfPane.clientHeight / 2;
+  for (let i = 0; i < pageCanvases.length; i++) {
+    const top = pageCanvases[i].offsetTop - pdfPane.offsetTop;
+    const bottom = top + pageCanvases[i].offsetHeight;
+    if (mid >= top && mid < bottom) return i + 1;
+  }
+  return pdfPane.scrollTop <= 0 ? 1 : pageCanvases.length;
+}
+
+function updatePageControls() {
+  const n = pageCanvases.length ? parseInt(pageInput.value, 10) || 1 : 0;
+  document.getElementById("btnPagePrev").disabled = (pageCanvases.length === 0 || n <= 1);
+  document.getElementById("btnPageNext").disabled = (pageCanvases.length === 0 || n >= pageCanvases.length);
+}
+
+// =====================================================================
+// Save grades
+// =====================================================================
+
+function buildGradesCSV() {
+  // student, first_page, total (info only — ignored on import), feedback, then per
+  // question: "<title>" (selected), "<title>-comment", "<title>-scores" (options).
+  const header = ["student", "first_page", "total", "feedback"];
+  for (const q of schemeQuestions) header.push(q.title, q.title + "-comment", q.title + "-scores");
+  const lines = [header.map(csvCell).join(OUT_DELIM)];
+
+  const rowFor = (name) => {
+    const grades = gradesByStudent[name] || {};
+    const comments = commentsByStudent[name] || {};
+    const cells = [name, firstPageByStudent[name] || "", fmt(computeTotal(name)), feedbackByStudent[name] || ""];
+    for (const q of schemeQuestions) {
+      const v = grades[q.title];
+      cells.push((typeof v === "number" && !isNaN(v)) ? fmt(v) : "");
+      cells.push(comments[q.title] || "");
+      cells.push(q.scores.join(" "));
+    }
+    return cells.map(csvCell).join(OUT_DELIM);
+  };
+
+  if (students.length === 0 && schemeQuestions.length) {
+    // No students yet: emit one scheme-only row (empty name) so options round-trip.
+    const cells = ["", "", "", ""];
+    for (const q of schemeQuestions) cells.push("", "", q.scores.join(" "));
+    lines.push(cells.map(csvCell).join(OUT_DELIM));
+  } else {
+    for (const name of students) lines.push(rowFor(name));
+  }
+  return lines.join("\r\n");
+}
+
+function downloadCSV(filename, text) {
+  const blob = new Blob(["﻿" + text], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function saveGrades() {
+  if (students.length === 0 && schemeQuestions.length === 0) {
+    alert("Nothing to save yet — add a question or a student first.");
+    return;
+  }
+  saveCurrentStudent();
+  downloadCSV("grades.csv", buildGradesCSV());
+}
+
+// =====================================================================
+// Wiring
+// =====================================================================
+
+function readFile(input, asArrayBuffer, callback) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => callback(reader.result);
+  if (asArrayBuffer) reader.readAsArrayBuffer(file);
+  else reader.readAsText(file);
+  input.value = ""; // allow re-importing the same file
+}
+
+document.getElementById("btnAssignment").addEventListener("click", () => document.getElementById("fileAssignment").click());
+document.getElementById("btnImportGrades").addEventListener("click", () => document.getElementById("fileGrades").click());
+document.getElementById("btnSave").addEventListener("click", saveGrades);
+
+document.getElementById("fileAssignment").addEventListener("change", e => readFile(e.target, true, renderPdf));
+document.getElementById("fileGrades").addEventListener("change", e => readFile(e.target, false, loadFile));
+
+// Student picker is an editable combobox: the popup lists existing students; choosing one
+// switches to it. Typing a new name + "+" adds it (see addStudent).
+studentSelect._comboItems = () => students;
+studentSelect._comboSelect = (name) => { saveCurrentStudent(); loadStudent(name); updateNavButtons(); };
+studentSelect._comboEmpty = "—";
+studentSelect.addEventListener("focus", () => openCombo(studentSelect));
+studentArrow.addEventListener("mousedown", e => {
+  e.preventDefault(); // keep focus where it is
+  (activeComboInput === studentSelect && comboPopup.classList.contains("open"))
+    ? closeCombo() : openCombo(studentSelect);
+});
+document.getElementById("btnAddStudent").addEventListener("click", addStudent);
+document.getElementById("btnRemoveStudent").addEventListener("click", removeStudent);
+
+// Editing the first-page box updates the current student.
+firstPageInput.addEventListener("input", () => {
+  if (currentStudent) firstPageByStudent[currentStudent] = parseInt(firstPageInput.value, 10) || undefined;
+});
+// The page button copies the page currently in view into the box (persists via the handler above).
+btnSetFirstPage.addEventListener("click", () => {
+  if (!pageCanvases.length) return;
+  firstPageInput.value = currentVisiblePage();
+  firstPageInput.dispatchEvent(new Event("input"));
+});
+// Tint the box to reflect whether selecting a student will jump the PDF.
+function updateFirstPageTint() {
+  firstPageInput.style.background = jumpToPage.checked ? "#e6f4ea" : "#fde8e8";
+}
+jumpToPage.addEventListener("change", updateFirstPageTint);
+updateFirstPageTint(); // initial paint (Jump is checked by default → green)
+// While the combobox holds a name that isn't a student yet (one being created),
+// pre-fill the first-page box with the page currently in view.
+studentSelect.addEventListener("input", () => {
+  const name = studentSelect.value.trim();
+  if (name && students.indexOf(name) < 0)
+    firstPageInput.value = pageCanvases.length ? currentVisiblePage() : "";
+});
+document.getElementById("btnPrev").addEventListener("click", () => moveStudent(-1));
+document.getElementById("btnNext").addEventListener("click", () => moveStudent(1));
+
+// Live-store the global feedback for the current student.
+globalFeedback.addEventListener("input", () => {
+  if (currentStudent) feedbackByStudent[currentStudent] = globalFeedback.value;
+});
+
+// Global feedback is an editable combobox backed by its own suggestion list
+// (feedbackBank), mirroring the per-question comment combo.
+globalFeedback._comboItems  = () => feedbackBank;
+globalFeedback._comboSelect = (val) => {
+  globalFeedback.value = val;
+  if (currentStudent) feedbackByStudent[currentStudent] = val;
+};
+globalFeedback._comboEmpty = "—";
+globalFeedback.addEventListener("focus", () => openCombo(globalFeedback));
+feedbackArrow.addEventListener("mousedown", e => {
+  e.preventDefault();
+  (activeComboInput === globalFeedback && comboPopup.classList.contains("open"))
+    ? closeCombo() : openCombo(globalFeedback);
+});
+feedbackAdd.addEventListener("mousedown", e => {
+  e.preventDefault();
+  bankAdd(feedbackBank, feedbackBankSet, globalFeedback.value);
+  if (activeComboInput === globalFeedback && comboPopup.classList.contains("open")) openCombo(globalFeedback);
+});
+feedbackDel.addEventListener("mousedown", e => {
+  e.preventDefault();
+  bankRemove(feedbackBank, feedbackBankSet, globalFeedback.value);
+  if (activeComboInput === globalFeedback && comboPopup.classList.contains("open")) openCombo(globalFeedback);
+});
+
+// Zoom controls.
+document.getElementById("btnPdfZoomIn").addEventListener("click", () => zoomPdf(1.2));
+document.getElementById("btnPdfZoomOut").addEventListener("click", () => zoomPdf(1 / 1.2));
+document.getElementById("btnGradeZoomIn").addEventListener("click", () => zoomGrade(1.1));
+document.getElementById("btnGradeZoomOut").addEventListener("click", () => zoomGrade(1 / 1.1));
+
+// Select a score the instant the mouse is pressed (no waiting for the synthesized
+// "click"), so options respond with zero delay. Delegated so it covers re-renders.
+questionsEl.addEventListener("pointerdown", e => {
+  const opt = e.target.closest(".opt");
+  if (!opt) return;            // ignore presses on the scrollbar / gaps
+  if (e.button !== undefined && e.button !== 0) return; // left button only
+  const input = opt.querySelector("input");
+  e.preventDefault();          // skip the browser's click synthesis/delay
+  selectOption(input);
+});
+
+// Remove a question via its ✕ button (delegated so it covers re-renders).
+questionsEl.addEventListener("click", e => {
+  const btn = e.target.closest(".qremove");
+  if (btn) removeQuestion(btn.dataset.title);
+});
+
+// Add-question inline form.
+document.getElementById("aqAdd").addEventListener("click", addQuestion);
+["aqTitle", "aqScores"].forEach(id => {
+  document.getElementById(id).addEventListener("keydown", e => {
+    if (e.key === "Enter") { e.preventDefault(); addQuestion(); }
+  });
+});
+
+// Close the comment popup on outside click, Escape, grading-list scroll, or resize.
+document.addEventListener("pointerdown", e => {
+  if (!comboPopup.classList.contains("open")) return;
+  if (comboPopup.contains(e.target)) return;
+  if (e.target.closest && e.target.closest(".combo")) return; // input/arrow handle themselves
+  closeCombo();
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && comboPopup.classList.contains("open")) closeCombo();
+});
+questionsEl.addEventListener("scroll", () => { if (comboPopup.classList.contains("open")) closeCombo(); });
+window.addEventListener("resize", () => { if (comboPopup.classList.contains("open")) closeCombo(); });
+
+// Page navigation controls.
+document.getElementById("btnPagePrev").addEventListener("click", () => goToPage((parseInt(pageInput.value, 10) || 1) - 1));
+document.getElementById("btnPageNext").addEventListener("click", () => goToPage((parseInt(pageInput.value, 10) || 1) + 1));
+pageInput.addEventListener("change", () => goToPage(parseInt(pageInput.value, 10) || 1));
+
+// Keep the page number in sync as the PDF is scrolled.
+let pageSyncRaf = null;
+pdfPane.addEventListener("scroll", () => {
+  if (pageSyncRaf) return;
+  pageSyncRaf = requestAnimationFrame(() => {
+    pageSyncRaf = null;
+    if (pageCanvases.length === 0) return;
+    const n = currentVisiblePage();
+    if (parseInt(pageInput.value, 10) !== n) {
+      pageInput.value = n;
+      updatePageControls();
+    }
+  });
+});
+
+// Mouse wheel always scrolls the PDF, from anywhere on the page (including over
+// the grading area). The grading list can still be scrolled by dragging its scrollbar.
+window.addEventListener("wheel", e => {
+  if (!onlyScrollPdf.checked) return; // let the hovered area scroll natively
+  if (pdfPane.scrollHeight <= pdfPane.clientHeight) return; // nothing to scroll
+  pdfPane.scrollTop += e.deltaY;
+  e.preventDefault();
+}, { passive: false });
+
+// Drag the divider to reallocate horizontal space between the PDF and grading panes.
+// Pointer capture keeps the drag tracking even when the cursor is over the PDF canvas.
+const appEl = document.getElementById("app");
+const leftPane = document.getElementById("left");
+const divider = document.getElementById("divider");
+let draggingSplit = false;
+divider.addEventListener("pointerdown", e => {
+  draggingSplit = true;
+  divider.setPointerCapture(e.pointerId);
+  document.body.style.cursor = "col-resize";
+  document.body.style.userSelect = "none";
+  e.preventDefault();
+});
+divider.addEventListener("pointermove", e => {
+  if (!draggingSplit) return;
+  const rect = appEl.getBoundingClientRect();
+  const w = e.clientX - rect.left;
+  const min = rect.width * 0.2, max = rect.width * 0.8;
+  leftPane.style.width = Math.min(max, Math.max(min, w)) + "px";
+});
+const endDrag = e => {
+  if (!draggingSplit) return;
+  draggingSplit = false;
+  try { divider.releasePointerCapture(e.pointerId); } catch (_) {}
+  document.body.style.cursor = "";
+  document.body.style.userSelect = "";
+};
+divider.addEventListener("pointerup", endDrag);
+divider.addEventListener("pointercancel", endDrag);
+
+updateNavButtons();
+updatePageControls();
+</script>
+</body>
+</html>
