@@ -1394,8 +1394,8 @@ function buildGradesHTML() {
       return (
         '<div class="qrow">' +
           '<div class="qtitle">' + htmlEscape(q.title) + '</div>' +
-          '<div class="qpts">' + htmlEscape(fmt(v)) + ' / ' + htmlEscape(fmt(q.max)) + '</div>' +
           (comment ? '<div class="qcomment">' + htmlEscape(comment) + '</div>' : '') +
+          '<div class="qpts">' + htmlEscape(fmt(v)) + ' / ' + htmlEscape(fmt(q.max)) + '</div>' +
         '</div>'
       );
     }).join("");
@@ -1424,11 +1424,12 @@ function buildGradesHTML() {
 '    color: #1f2937;\n' +
 '    background: #f4f5f7;\n' +
 '  }\n' +
+'  .sheet { column-count: 2; column-gap: 18px; }\n' +
 '  .slip {\n' +
 '    border: 1px solid #d7dbe0;\n' +
 '    border-radius: 8px;\n' +
 '    background: #fff;\n' +
-'    padding: 16px 18px;\n' +
+'    padding: 12px 14px;\n' +
 '    margin: 0 0 18px;\n' +
 '    break-inside: avoid;\n' +
 '    page-break-inside: avoid;\n' +
@@ -1441,8 +1442,8 @@ function buildGradesHTML() {
 '    border-bottom: 1px solid #eef0f3;\n' +
 '    padding-bottom: 8px;\n' +
 '  }\n' +
-'  .name { font-size: 20px; font-weight: 700; }\n' +
-'  .total { font-size: 20px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }\n' +
+'  .name { font-size: 18px; font-weight: 700; }\n' +
+'  .total { font-size: 18px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }\n' +
 '  .feedback {\n' +
 '    margin-top: 10px;\n' +
 '    font-size: 14px;\n' +
@@ -1452,28 +1453,28 @@ function buildGradesHTML() {
 '  }\n' +
 '  .questions { margin-top: 10px; }\n' +
 '  .qrow {\n' +
-'    display: grid;\n' +
-'    grid-template-columns: 1fr auto;\n' +
+'    display: flex;\n' +
 '    align-items: baseline;\n' +
-'    gap: 2px 14px;\n' +
-'    padding: 6px 0;\n' +
+'    gap: 8px;\n' +
+'    padding: 5px 0;\n' +
 '    border-top: 1px solid #f3f4f6;\n' +
 '  }\n' +
 '  .qrow:first-child { border-top: 0; }\n' +
-'  .qtitle { font-weight: 600; font-size: 14px; }\n' +
-'  .qpts { text-align: right; font-size: 14px; white-space: nowrap; font-variant-numeric: tabular-nums; }\n' +
+'  .qtitle { flex: 0 0 auto; font-weight: 600; font-size: 14px; }\n' +
 '  .qcomment {\n' +
-'    grid-column: 1 / -1;\n' +
+'    flex: 1 1 auto;\n' +
+'    min-width: 0;\n' +
 '    font-size: 13px;\n' +
 '    color: #6b7280;\n' +
 '    white-space: pre-wrap;\n' +
 '  }\n' +
+'  .qpts { flex: 0 0 auto; margin-left: auto; font-size: 14px; white-space: nowrap; font-variant-numeric: tabular-nums; }\n' +
 '  @media print {\n' +
 '    body { margin: 0; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }\n' +
 '    @page { margin: 12mm; }\n' +
 '  }\n' +
 '</style>\n</head>\n<body>\n' +
-slips +
+'<div class="sheet">' + slips + '</div>' +
 '\n</body>\n</html>\n'
   );
 }
