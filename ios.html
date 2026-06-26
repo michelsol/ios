@@ -440,7 +440,7 @@
   <!-- RIGHT: grading -->
   <div id="right">
     <div id="toolbar">
-      <button id="btnSave" aria-label="Save" title="Save grades in CSV format">
+      <button id="btnSave" aria-label="Save" title="Save grades in ODS format">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
@@ -448,7 +448,7 @@
           <polyline points="7 3 7 8 15 8"/>
         </svg>
       </button>
-      <button id="btnImportGrades" class="secondary" aria-label="Load" title="Import grades in CSV format">
+      <button id="btnImportGrades" class="secondary" aria-label="Load" title="Import grades in ODS format">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
@@ -541,12 +541,16 @@
 
 <!-- Hidden file inputs -->
 <input type="file" id="fileAssignment" accept="application/pdf" style="display:none">
-<input type="file" id="fileGrades" accept=".csv,text/csv" style="display:none">
+<input type="file" id="fileGrades" accept=".ods,application/vnd.oasis.opendocument.spreadsheet" style="display:none">
 
 <!-- Shared suggestion popup for every question's comment combobox -->
 <div id="comboPopup"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<!-- SheetJS (CDN), used to read/write the .ods save format. The "full" build is
+     required (it bundles the ODS codecs; the "mini" build does not). To run fully
+     offline, replace this URL with a local copy of xlsx.full.min.js. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 "use strict";
 
@@ -572,8 +576,6 @@ const commentBankSet = new Set();
 const feedbackBank = [];       // unique global feedbacks ever used (separate suggestion list)
 const feedbackBankSet = new Set();
 
-const OUT_DELIM = ";";
-
 // ---- DOM refs ----
 const pdfPane       = document.getElementById("pdfPane");
 const pdfEmpty      = document.getElementById("pdfEmpty");
@@ -597,54 +599,57 @@ const feedbackArrow = document.getElementById("feedbackArrow");
 let activeComboInput = null;   // the comment input the popup is currently attached to
 
 // =====================================================================
-// CSV helpers
+// Spreadsheet helpers
 // =====================================================================
 
-// Detect delimiter (";" preferred, else "," ) from the first non-empty line.
-function detectDelimiter(text) {
-  const firstLine = text.split(/\r?\n/).find(l => l.trim().length > 0) || "";
-  return firstLine.indexOf(";") >= 0 ? ";" : ",";
+// Read a worksheet cell as a trimmed string. SheetJS returns numeric cells as
+// numbers, so coerce before trimming (the callers re-parse numbers as needed).
+function cell(row, i) {
+  return String((row && row[i] != null) ? row[i] : "").trim();
 }
 
-// Parse CSV text into an array of rows (each row an array of trimmed cells).
-// Quote-aware (RFC 4180): "double quoted" fields may contain the delimiter,
-// escaped quotes (""), and embedded newlines. Fully-empty rows are dropped.
-function parseCSV(text) {
-  const delim = detectDelimiter(text);
-  const rows = [];
-  let row = [], field = "", inQuotes = false, i = 0;
-  const pushField = () => { row.push(field.trim()); field = ""; };
-  const pushRow = () => {
-    pushField();
-    if (!row.every(c => c === "")) rows.push(row);
-    row = [];
+// Build a { col0: col1 } map from a 2-column sheet (e.g. "Page info", "Feedback").
+// Rows with a blank first cell are skipped; the last entry wins on duplicates.
+function twoColMap(rows) {
+  const map = {};
+  for (const row of rows) {
+    const key = cell(row, 0);
+    if (key) map[key] = cell(row, 1);
+  }
+  return map;
+}
+
+// Index a matrix sheet whose row 0 is ["", ...question titles] and whose first
+// column is the student name. Returns helpers to read cells by (name, title),
+// by the first/any non-empty cell in a title's column (used to recover a
+// question's score options regardless of which student row carries them).
+function matrixIndex(rows) {
+  const header = rows[0] || [];
+  const colOf = {};       // title -> column index
+  const titles = [];
+  for (let k = 1; k < header.length; k++) {
+    const t = cell(header, k);
+    if (!t || t in colOf) continue;
+    colOf[t] = k;
+    titles.push(t);
+  }
+  const data = rows.slice(1);
+  const colValues = (title) => {
+    const col = colOf[title];
+    if (col === undefined) return [];
+    return data.map(r => cell(r, col)).filter(Boolean);
   };
-  while (i < text.length) {
-    const c = text[i];
-    if (inQuotes) {
-      if (c === '"') {
-        if (text[i + 1] === '"') { field += '"'; i += 2; continue; }
-        inQuotes = false; i++; continue;
-      }
-      field += c; i++; continue;
-    }
-    if (c === '"') { inQuotes = true; i++; continue; }
-    if (c === delim) { pushField(); i++; continue; }
-    if (c === '\r') { i++; continue; }
-    if (c === '\n') { pushRow(); i++; continue; }
-    field += c; i++;
-  }
-  if (field !== "" || row.length) pushRow();
-  return rows;
-}
-
-// Quote a value for CSV output when it contains the delimiter, a quote, or a newline.
-function csvCell(s) {
-  s = (s === null || s === undefined) ? "" : String(s);
-  if (s.indexOf(OUT_DELIM) >= 0 || s.indexOf('"') >= 0 || /[\r\n]/.test(s)) {
-    return '"' + s.replace(/"/g, '""') + '"';
-  }
-  return s;
+  return {
+    titles,
+    get(name, title) {
+      const col = colOf[title];
+      if (col === undefined) return "";
+      const row = data.find(r => cell(r, 0) === name);
+      return row ? cell(row, col) : "";
+    },
+    firstInColumn(title) { return colValues(title)[0] || ""; },
+    allInColumn(title) { return colValues(title); },
+  };
 }
 
 // ---- Comments ----
@@ -969,7 +974,7 @@ function refreshCheckedStyles() {
 }
 
 // Sum a student's points: their selected score per question, defaulting to the
-// first (lowest) option where nothing is selected. Pure — also used for CSV export.
+// first (lowest) option where nothing is selected. Pure — also used by the printable export.
 function computeTotal(name) {
   const grades = gradesByStudent[name] || {};
   let sum = 0;
@@ -1059,56 +1064,59 @@ function zoomGrade(factor) {
   document.getElementById("gradeZoomLabel").textContent = Math.round(gradeZoom * 100) + "%";
 }
 
-// Load a unified CSV that defines the scheme (per question: "<title>", "<title>-comment",
-// "<title>-scores") and the students/grades/comments. Replaces all current state.
-function loadFile(text) {
-  const rows = parseCSV(text);
-  if (rows.length === 0) { alert("The file looks empty."); return; }
-  const header = rows[0];
-
-  // Optional metadata columns near the start (absent in older files), located by name.
-  // "total" is informational only: it is located so it can be skipped, never parsed.
-  let firstPageIndex = -1, feedbackIndex = -1, totalIndex = -1;
-  for (let k = 1; k < header.length; k++) {
-    const h = (header[k] || "").trim().toLowerCase();
-    if (h === "first_page" && firstPageIndex < 0) firstPageIndex = k;
-    else if (h === "feedback" && feedbackIndex < 0) feedbackIndex = k;
-    else if (h === "total" && totalIndex < 0) totalIndex = k;
+// Read an .ods save file, collect its 7 sheets by name (as arrays of rows),
+// then hand them to loadWorkbook.
+function loadGradesWorkbook(buf) {
+  if (!window.XLSX) {
+    alert("Spreadsheet library failed to load. Check your internet connection (SheetJS is loaded from a CDN).");
+    return;
   }
-
-  // Classify columns (from index 1) by suffix; build question order from score columns.
-  const scoreCols = [];    // { title, index }
-  const commentByTitle = {}; // title -> column index
-  const scoresByTitle = {};  // title -> column index
-  for (let k = 1; k < header.length; k++) {
-    if (k === feedbackIndex || k === firstPageIndex || k === totalIndex) continue; // not a question column
-    const h = (header[k] || "").trim();
-    if (!h) continue;
-    if (/-comment$/i.test(h)) commentByTitle[h.replace(/-comment$/i, "")] = k;
-    else if (/-scores$/i.test(h)) scoresByTitle[h.replace(/-scores$/i, "")] = k;
-    else scoreCols.push({ title: h, index: k });
+  let wb;
+  try {
+    wb = XLSX.read(buf, { type: "array" });
+  } catch (err) {
+    alert("Could not read this file as an .ods spreadsheet: " + (err && err.message ? err.message : err));
+    return;
   }
-
-  const data = rows.slice(1);
-  const firstNonEmpty = idx => {
-    if (idx === undefined) return "";
-    for (const row of data) { const c = (row[idx] || "").trim(); if (c) return c; }
-    return "";
+  const sheet = (name) => {
+    const ws = wb.Sheets[name];
+    return ws ? XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) : [];
   };
+  loadWorkbook({
+    students:       sheet("Students"),
+    pageInfo:       sheet("Page info"),
+    feedback:       sheet("Feedback"),
+    questions:      sheet("Questions"),
+    possibleScores: sheet("Possible scores"),
+    grades:         sheet("Grades"),
+    comments:       sheet("Comments"),
+  });
+}
 
-  // Rebuild the scheme from the score columns + their "-scores" column.
-  const newScheme = scoreCols.map(c => {
-    let scores = parseScoreList(firstNonEmpty(scoresByTitle[c.title]));
+// Rebuild all state from the 7 sheets (see buildWorkbook for the layout).
+// `s` holds each sheet as an array of cell-arrays. Replaces all current state.
+function loadWorkbook(s) {
+  const ps = matrixIndex(s.possibleScores);
+  const gr = matrixIndex(s.grades);
+  const cm = matrixIndex(s.comments);
+
+  // Question order comes from the "Questions" sheet; fall back to the matrix
+  // headers if that sheet is missing/empty.
+  let titles = s.questions.map(r => cell(r, 0)).filter(Boolean);
+  if (titles.length === 0) titles = ps.titles.length ? ps.titles : gr.titles;
+
+  // Rebuild the scheme: a question's score options come from its "Possible scores"
+  // column (any row), falling back to the distinct grades observed for it, then [0].
+  schemeQuestions = titles.map(title => {
+    let scores = parseScoreList(ps.firstInColumn(title));
     if (scores.length === 0) {
-      // Fallback: distinct selected values observed for this question, else [0].
-      scores = parseScoreList(data.map(r => r[c.index]).filter(Boolean).join(" "));
+      scores = parseScoreList(gr.allInColumn(title).join(" "));
       if (scores.length === 0) scores = [0];
     }
-    return { title: c.title, max: scores[scores.length - 1], scores };
+    return { title, max: scores[scores.length - 1], scores };
   });
 
   // Replace all state.
-  schemeQuestions = newScheme;
   students = [];
   gradesByStudent = {};
   commentsByStudent = {};
@@ -1117,27 +1125,23 @@ function loadFile(text) {
   commentBank.length = 0;
   commentBankSet.clear();
 
-  for (const row of data) {
-    const name = (row[0] || "").trim();
-    if (!name) continue; // skip the scheme-only row (empty student name)
-    if (students.indexOf(name) < 0) students.push(name);
-    const grades = gradesByStudent[name] || (gradesByStudent[name] = {});
-    const cm = commentsByStudent[name] || (commentsByStudent[name] = {});
-    feedbackByStudent[name] = feedbackIndex >= 0 ? (row[feedbackIndex] || "").trim() : "";
-    if (firstPageIndex >= 0) {
-      const fp = parseInt((row[firstPageIndex] || "").trim(), 10);
-      if (fp >= 1) firstPageByStudent[name] = fp;
-    }
-    for (const c of scoreCols) {
-      const cell = (row[c.index] || "").trim();
-      if (cell === "") continue;
-      const v = parseFloat(cell);
-      if (!isNaN(v)) grades[c.title] = v;
-    }
-    for (const title in commentByTitle) {
-      const cell = (row[commentByTitle[title]] || "").trim();
-      if (!cell) continue;
-      cm[title] = cell;
+  const pageMap = twoColMap(s.pageInfo);
+  const fbMap = twoColMap(s.feedback);
+
+  for (const row of s.students) {
+    const name = cell(row, 0);
+    if (!name || students.indexOf(name) >= 0) continue;
+    students.push(name);
+    const grades = gradesByStudent[name] = {};
+    const comments = commentsByStudent[name] = {};
+    feedbackByStudent[name] = fbMap[name] || "";
+    const fp = parseInt(pageMap[name], 10);
+    if (fp >= 1) firstPageByStudent[name] = fp;
+    for (const q of schemeQuestions) {
+      const raw = gr.get(name, q.title);
+      if (raw !== "") { const v = parseFloat(raw); if (!isNaN(v)) grades[q.title] = v; }
+      const c = cm.get(name, q.title);
+      if (c) comments[q.title] = c;
     }
   }
 
@@ -1312,35 +1316,43 @@ function updatePageControls() {
 // Save grades
 // =====================================================================
 
-function buildGradesCSV() {
-  // student, first_page, total (info only — ignored on import), feedback, then per
-  // question: "<title>" (selected), "<title>-comment", "<title>-scores" (options).
-  const header = ["student", "first_page", "total", "feedback"];
-  for (const q of schemeQuestions) header.push(q.title, q.title + "-comment", q.title + "-scores");
-  const lines = [header.map(csvCell).join(OUT_DELIM)];
+// Build the 7 save sheets, each as { name, aoa } (an array of cell-arrays).
+// Returned in display order so the workbook tabs come out in that order.
+//   Students        — one student name per row
+//   Page info       — [name, first_page]
+//   Feedback        — [name, feedback]
+//   Questions       — one question title per row
+//   Possible scores — students × questions matrix, cell = that question's options
+//   Grades          — students × questions matrix, cell = obtained grade
+//   Comments        — students × questions matrix, cell = comment
+// Possible scores are per-question (shared), so every student row repeats them.
+function buildWorkbook() {
+  const titles = schemeQuestions.map(q => q.title);
 
-  const rowFor = (name) => {
-    const grades = gradesByStudent[name] || {};
-    const comments = commentsByStudent[name] || {};
-    const cells = [name, firstPageByStudent[name] || "", fmt(computeTotal(name)), feedbackByStudent[name] || ""];
-    for (const q of schemeQuestions) {
-      const v = grades[q.title];
-      cells.push((typeof v === "number" && !isNaN(v)) ? fmt(v) : "");
-      cells.push(comments[q.title] || "");
-      cells.push(q.scores.join(" "));
-    }
-    return cells.map(csvCell).join(OUT_DELIM);
+  // A students × questions matrix sheet. When there are no students yet, emit one
+  // blank-name row so a question's options still round-trip (only meaningful for
+  // the "Possible scores" sheet; harmless and empty for "Grades"/"Comments").
+  const matrix = (valueFn) => {
+    const rows = [["", ...titles]];
+    const names = students.length ? students : [null];
+    for (const n of names) rows.push([n || "", ...schemeQuestions.map(q => valueFn(n, q))]);
+    return rows;
   };
 
-  if (students.length === 0 && schemeQuestions.length) {
-    // No students yet: emit one scheme-only row (empty name) so options round-trip.
-    const cells = ["", "", "", ""];
-    for (const q of schemeQuestions) cells.push("", "", q.scores.join(" "));
-    lines.push(cells.map(csvCell).join(OUT_DELIM));
-  } else {
-    for (const name of students) lines.push(rowFor(name));
-  }
-  return lines.join("\r\n");
+  const gradeCell = (n, q) => {
+    const v = (n && gradesByStudent[n]) ? gradesByStudent[n][q.title] : undefined;
+    return (typeof v === "number" && !isNaN(v)) ? fmt(v) : "";
+  };
+
+  return [
+    { name: "Students",        aoa: students.map(n => [n]) },
+    { name: "Page info",       aoa: students.map(n => [n, firstPageByStudent[n] || ""]) },
+    { name: "Feedback",        aoa: students.map(n => [n, feedbackByStudent[n] || ""]) },
+    { name: "Questions",       aoa: titles.map(t => [t]) },
+    { name: "Possible scores", aoa: matrix((n, q) => q.scores.join(" ")) },
+    { name: "Grades",          aoa: matrix(gradeCell) },
+    { name: "Comments",        aoa: matrix((n, q) => (n && commentsByStudent[n] && commentsByStudent[n][q.title]) || "") },
+  ];
 }
 
 // Trigger a browser download of `text` as `filename` with the given MIME type.
@@ -1361,9 +1373,15 @@ function saveGrades() {
     alert("Nothing to save yet — add a question or a student first.");
     return;
   }
+  if (!window.XLSX) {
+    alert("Spreadsheet library failed to load. Check your internet connection (SheetJS is loaded from a CDN).");
+    return;
+  }
   saveCurrentStudent();
-  // Leading BOM so spreadsheet apps detect UTF-8.
-  downloadFile("grades.csv", "﻿" + buildGradesCSV(), "text/csv;charset=utf-8;");
+  const wb = XLSX.utils.book_new();
+  for (const { name, aoa } of buildWorkbook())
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), name);
+  XLSX.writeFile(wb, "grades.ods"); // .ods extension → SheetJS writes ODS; triggers the download
 }
 
 // =====================================================================
@@ -1508,7 +1526,7 @@ document.getElementById("btnSave").addEventListener("click", saveGrades);
 document.getElementById("btnExport").addEventListener("click", exportGrades);
 
 document.getElementById("fileAssignment").addEventListener("change", e => readFile(e.target, true, renderPdf));
-document.getElementById("fileGrades").addEventListener("change", e => readFile(e.target, false, loadFile));
+document.getElementById("fileGrades").addEventListener("change", e => readFile(e.target, true, loadGradesWorkbook));
 
 // Student picker is an editable combobox: the popup lists existing students; choosing one
 // switches to it. Typing a new name + "+" adds it (see addStudent).
