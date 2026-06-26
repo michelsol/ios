@@ -652,6 +652,20 @@ function matrixIndex(rows) {
   };
 }
 
+// Read the "Grading_Scheme" sheet (one row per question: [title, "s1 s2 s3"]).
+// Column 1 is the question title; column 2 is a whitespace-separated score list.
+// Returns ordered titles plus a title -> sorted-numbers lookup.
+function parseGradingScheme(rows) {
+  const map = {}, titles = [];
+  for (const row of rows || []) {
+    const title = cell(row, 0);
+    if (!title || title in map) continue;
+    map[title] = parseScoreList(cell(row, 1));
+    titles.push(title);
+  }
+  return { titles, get: t => map[t] || [] };
+}
+
 // ---- Comments ----
 
 // Add an entry to a suggestion list (deduped). The popup reads the list fresh
@@ -683,11 +697,19 @@ function fmt(n) {
 // Grading scheme
 // =====================================================================
 
+// Parse a number that may use a comma as its decimal separator (e.g. "0,5"),
+// which a locale-set Excel or manual input can produce. Returns NaN if unparsable.
+function toNum(s) {
+  s = String(s).trim();
+  if (s.indexOf(".") === -1 && s.indexOf(",") !== -1) s = s.replace(",", ".");
+  return parseFloat(s);
+}
+
 // Parse a possible-scores string ("0 0.25 0.5") into a sorted, deduped number list.
 function parseScoreList(text) {
   return Array.from(new Set(
     (text || "").trim().split(/[\s;]+/).filter(Boolean)
-      .map(s => parseFloat(s)).filter(n => !isNaN(n))
+      .map(s => toNum(s)).filter(n => !isNaN(n))
   )).sort((a, b) => a - b);
 }
 
@@ -1078,37 +1100,41 @@ function loadGradesWorkbook(buf) {
     alert("Could not read this file as an .ods spreadsheet: " + (err && err.message ? err.message : err));
     return;
   }
+  // Look sheets up by a normalized name (ignore spaces/underscores and case).
+  // Excel rewrites multi-word ODS table names with underscores on save
+  // (e.g. "Page info" -> "Page_info"), so an exact match would miss them.
+  const norm = n => String(n).toLowerCase().replace(/[\s_]+/g, "");
   const sheet = (name) => {
-    const ws = wb.Sheets[name];
+    const key = norm(name);
+    const found = wb.SheetNames.find(n => norm(n) === key);
+    const ws = found ? wb.Sheets[found] : null;
     return ws ? XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) : [];
   };
   loadWorkbook({
-    students:       sheet("Students"),
-    pageInfo:       sheet("Page info"),
-    feedback:       sheet("Feedback"),
-    questions:      sheet("Questions"),
-    possibleScores: sheet("Possible scores"),
-    grades:         sheet("Grades"),
-    comments:       sheet("Comments"),
+    students:      sheet("Students"),
+    pageInfo:      sheet("Page info"),
+    feedback:      sheet("Feedback"),
+    gradingScheme: sheet("Grading_Scheme"),
+    grades:        sheet("Grades"),
+    comments:      sheet("Comments"),
   });
 }
 
-// Rebuild all state from the 7 sheets (see buildWorkbook for the layout).
+// Rebuild all state from the save sheets (see buildWorkbook for the layout).
 // `s` holds each sheet as an array of cell-arrays. Replaces all current state.
 function loadWorkbook(s) {
-  const ps = matrixIndex(s.possibleScores);
+  const gs = parseGradingScheme(s.gradingScheme);
   const gr = matrixIndex(s.grades);
   const cm = matrixIndex(s.comments);
 
-  // Question order comes from the "Questions" sheet; fall back to the matrix
-  // headers if that sheet is missing/empty.
-  let titles = s.questions.map(r => cell(r, 0)).filter(Boolean);
-  if (titles.length === 0) titles = ps.titles.length ? ps.titles : gr.titles;
+  // Question order comes from the Grading_Scheme rows; fall back to the grades
+  // matrix header if that sheet is missing/empty.
+  let titles = gs.titles.length ? gs.titles : gr.titles;
 
-  // Rebuild the scheme: a question's score options come from its "Possible scores"
-  // column (any row), falling back to the distinct grades observed for it, then [0].
+  // Rebuild the scheme: a question's score options come from its Grading_Scheme
+  // row, falling back to the distinct grades observed for it, then [0].
   schemeQuestions = titles.map(title => {
-    let scores = parseScoreList(ps.firstInColumn(title));
+    let scores = gs.get(title);
     if (scores.length === 0) {
       scores = parseScoreList(gr.allInColumn(title).join(" "));
       if (scores.length === 0) scores = [0];
@@ -1139,7 +1165,7 @@ function loadWorkbook(s) {
     if (fp >= 1) firstPageByStudent[name] = fp;
     for (const q of schemeQuestions) {
       const raw = gr.get(name, q.title);
-      if (raw !== "") { const v = parseFloat(raw); if (!isNaN(v)) grades[q.title] = v; }
+      if (raw !== "") { const v = toNum(raw); if (!isNaN(v)) grades[q.title] = v; }
       const c = cm.get(name, q.title);
       if (c) comments[q.title] = c;
     }
@@ -1316,22 +1342,21 @@ function updatePageControls() {
 // Save grades
 // =====================================================================
 
-// Build the 7 save sheets, each as { name, aoa } (an array of cell-arrays).
+// Build the save sheets, each as { name, aoa } (an array of cell-arrays).
 // Returned in display order so the workbook tabs come out in that order.
-//   Students        — one student name per row
-//   Page info       — [name, first_page]
-//   Feedback        — [name, feedback]
-//   Questions       — one question title per row
-//   Possible scores — students × questions matrix, cell = that question's options
-//   Grades          — students × questions matrix, cell = obtained grade
-//   Comments        — students × questions matrix, cell = comment
-// Possible scores are per-question (shared), so every student row repeats them.
+//   Students       — one student name per row
+//   Page info      — [name, first_page]
+//   Feedback       — [name, feedback]
+//   Grading_Scheme — one row per question: [title, "score1 score2 ..."] (the
+//                    questions and their score options; column 2 is a list string)
+//   Grades         — students × questions matrix, cell = obtained grade (number)
+//   Comments       — students × questions matrix, cell = comment
 function buildWorkbook() {
   const titles = schemeQuestions.map(q => q.title);
 
-  // A students × questions matrix sheet. When there are no students yet, emit one
-  // blank-name row so a question's options still round-trip (only meaningful for
-  // the "Possible scores" sheet; harmless and empty for "Grades"/"Comments").
+  // A students × questions matrix sheet (used for "Grades" and "Comments").
+  // Row 0 is ["", ...titles]; when there are no students yet, emit one blank-name
+  // row so the header (question titles) still round-trips.
   const matrix = (valueFn) => {
     const rows = [["", ...titles]];
     const names = students.length ? students : [null];
@@ -1339,19 +1364,21 @@ function buildWorkbook() {
     return rows;
   };
 
+  // Emit grades as numeric cells (not formatted strings) so they survive Excel
+  // round-trips and locale differences; blank when a question has no grade yet.
   const gradeCell = (n, q) => {
     const v = (n && gradesByStudent[n]) ? gradesByStudent[n][q.title] : undefined;
-    return (typeof v === "number" && !isNaN(v)) ? fmt(v) : "";
+    return (typeof v === "number" && !isNaN(v)) ? v : "";
   };
 
   return [
-    { name: "Students",        aoa: students.map(n => [n]) },
-    { name: "Page info",       aoa: students.map(n => [n, firstPageByStudent[n] || ""]) },
-    { name: "Feedback",        aoa: students.map(n => [n, feedbackByStudent[n] || ""]) },
-    { name: "Questions",       aoa: titles.map(t => [t]) },
-    { name: "Possible scores", aoa: matrix((n, q) => q.scores.join(" ")) },
-    { name: "Grades",          aoa: matrix(gradeCell) },
-    { name: "Comments",        aoa: matrix((n, q) => (n && commentsByStudent[n] && commentsByStudent[n][q.title]) || "") },
+    { name: "Students",       aoa: students.map(n => [n]) },
+    { name: "Page info",      aoa: students.map(n => [n, firstPageByStudent[n] || ""]) },
+    { name: "Feedback",       aoa: students.map(n => [n, feedbackByStudent[n] || ""]) },
+    // One row per question: [title, "score1 score2 ..."] (questions + score options).
+    { name: "Grading_Scheme", aoa: schemeQuestions.map(q => [q.title, q.scores.join(" ")]) },
+    { name: "Grades",         aoa: matrix(gradeCell) },
+    { name: "Comments",       aoa: matrix((n, q) => (n && commentsByStudent[n] && commentsByStudent[n][q.title]) || "") },
   ];
 }
 
@@ -1381,7 +1408,9 @@ function saveGrades() {
   const wb = XLSX.utils.book_new();
   for (const { name, aoa } of buildWorkbook())
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), name);
-  XLSX.writeFile(wb, "grades.ods"); // .ods extension → SheetJS writes ODS; triggers the download
+  // .ods extension → SheetJS writes ODS; compression: true DEFLATEs the zip
+  // entries (otherwise they are stored uncompressed). Triggers the download.
+  XLSX.writeFile(wb, "grades.ods", { compression: true });
 }
 
 // =====================================================================
