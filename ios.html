@@ -300,6 +300,23 @@
     border-color: #f1c6c6;
     background: #fdecec;
   }
+  .qmove-group { display: flex; flex-direction: column; gap: 2px; align-self: center; }
+  .qmove {
+    display: flex; align-items: center; justify-content: center;
+    width: 24px; height: 13px; padding: 0;
+    border: 1px solid transparent; border-radius: 4px;
+    background: transparent; cursor: pointer;
+  }
+  .qmove::before {                       /* CSS triangle, no text glyph */
+    content: ""; width: 0; height: 0;
+    border-left: 5px solid transparent; border-right: 5px solid transparent;
+  }
+  .qmove[data-dir="up"]::before   { border-bottom: 6px solid var(--muted); }
+  .qmove[data-dir="down"]::before { border-top: 6px solid var(--muted); }
+  .qmove:hover:not(:disabled)                          { background: #f0f5ff; border-color: #c7d7f5; }
+  .qmove[data-dir="up"]:hover:not(:disabled)::before   { border-bottom-color: var(--accent); }
+  .qmove[data-dir="down"]:hover:not(:disabled)::before { border-top-color: var(--accent); }
+  .qmove:disabled { cursor: not-allowed; }   /* dimmed by global button:disabled opacity */
   #addQuestionBar {
     display: flex;
     flex-wrap: wrap;
@@ -353,6 +370,12 @@
   }
   .zoomctl button:hover { background: #f0f2f5; }
   .zoomctl .lens { width: 16px; height: 16px; display: block; }
+  #forAllBar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    margin-top: 8px;
+  }
   #forAllLabel {
     display: inline-flex;
     align-items: center;
@@ -518,6 +541,18 @@
         <input type="text" id="aqScores" placeholder="0 0.5 1 1.5 2" title="Possible scores">
         <button id="aqAdd" aria-label="Add question" title="Add question">+</button>
       </div>
+      <div id="forAllBar">
+        <label id="forAllLabel" title="Apply to all students">
+          <input type="checkbox" id="forAllCheck" checked>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+          </svg>
+        </label>
+      </div>
     </div>
     <div id="totalBar">
       <span class="totalLabel"><span id="totalValue">0</span><span class="max" id="totalMax"> / 0</span></span>
@@ -544,16 +579,6 @@
         <span id="gradeZoomLabel">100%</span>
         <button id="btnGradeZoomIn" title="Zoom in grading">+</button>
       </span>
-      <label id="forAllLabel" title="When on, Add/Remove question applies to all students; when off, only the current student">
-        <input type="checkbox" id="forAllCheck" checked>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <circle cx="9" cy="7" r="4"/>
-          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-          <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-        </svg>
-      </label>
     </div>
   </div>
 </div>
@@ -616,6 +641,7 @@ const totalValueEl  = document.getElementById("totalValue");
 const totalMaxEl    = document.getElementById("totalMax");
 const comboPopup    = document.getElementById("comboPopup");
 const addQuestionBar = document.getElementById("addQuestionBar");
+const forAllBar = document.getElementById("forAllBar");
 const globalFeedback = document.getElementById("globalFeedback");
 const feedbackAdd   = document.getElementById("feedbackAdd");
 const feedbackDel   = document.getElementById("feedbackDel");
@@ -788,6 +814,32 @@ function addQuestion() {
   aqTitle.focus();
 }
 
+// Swap a question with its neighbour within one student's scheme. No-op if the
+// title is absent or the target position is out of range.
+function moveQuestionInScheme(scheme, title, delta) {
+  const i = scheme.findIndex(q => q.title === title);
+  if (i < 0) return;
+  const j = i + delta;
+  if (j < 0 || j >= scheme.length) return;
+  const tmp = scheme[i];
+  scheme[i] = scheme[j];
+  scheme[j] = tmp;
+}
+
+// Reorder a question one step. The "for all" switch decides whether the move is
+// mirrored in every student's scheme or only the current one.
+function moveQuestion(title, dir) {
+  const delta = dir === "up" ? -1 : 1;
+  saveCurrentStudent();
+  if (forAll) {
+    if (students.length === 0) moveQuestionInScheme(schemeFor(""), title, delta); // draft
+    else for (const name of students) moveQuestionInScheme(schemeFor(name), title, delta);
+  } else {
+    moveQuestionInScheme(schemeFor(currentStudent), title, delta);
+  }
+  renderQuestions();
+}
+
 // Remove a question. The "for all" switch decides whether it is dropped for every
 // student or only the current one.
 function removeQuestion(title) {
@@ -836,12 +888,13 @@ function renderQuestions() {
     empty.innerHTML = '';
     questionsEl.appendChild(empty);
     questionsEl.appendChild(addQuestionBar);
+    questionsEl.appendChild(forAllBar);
     updateTotalMax();
     recomputeTotal();
     return;
   }
 
-  for (const q of schemeQuestions) {
+  schemeQuestions.forEach((q, qIndex) => {
     const block = document.createElement("div");
     block.className = "question";
 
@@ -928,6 +981,29 @@ function renderQuestions() {
     combo.appendChild(arrow);
     block.appendChild(combo);
 
+    const qmoveGroup = document.createElement("div");
+    qmoveGroup.className = "qmove-group";
+
+    const moveUp = document.createElement("button");
+    moveUp.type = "button";
+    moveUp.className = "qmove";
+    moveUp.title = "Move question up";
+    moveUp.dataset.title = q.title;
+    moveUp.dataset.dir = "up";
+    moveUp.disabled = (qIndex === 0);
+    qmoveGroup.appendChild(moveUp);
+
+    const moveDown = document.createElement("button");
+    moveDown.type = "button";
+    moveDown.className = "qmove";
+    moveDown.title = "Move question down";
+    moveDown.dataset.title = q.title;
+    moveDown.dataset.dir = "down";
+    moveDown.disabled = (qIndex === schemeQuestions.length - 1);
+    qmoveGroup.appendChild(moveDown);
+
+    block.appendChild(qmoveGroup);
+
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "qremove";
@@ -937,9 +1013,10 @@ function renderQuestions() {
     block.appendChild(remove);
 
     questionsEl.appendChild(block);
-  }
+  });
 
   questionsEl.appendChild(addQuestionBar); // form sits at the bottom of the list
+  questionsEl.appendChild(forAllBar);      // "for all" switch directly below it
   updateTotalMax();
   loadStudent(currentStudent); // apply current student's selections
 }
@@ -1727,10 +1804,12 @@ questionsEl.addEventListener("pointerdown", e => {
   selectOption(input);
 });
 
-// Remove a question via its ✕ button (delegated so it covers re-renders).
+// Remove or reorder a question via its row buttons (delegated so it covers re-renders).
 questionsEl.addEventListener("click", e => {
-  const btn = e.target.closest(".qremove");
-  if (btn) removeQuestion(btn.dataset.title);
+  const rm = e.target.closest(".qremove");
+  if (rm) { removeQuestion(rm.dataset.title); return; }
+  const mv = e.target.closest(".qmove");
+  if (mv && !mv.disabled) moveQuestion(mv.dataset.title, mv.dataset.dir);
 });
 
 // Add-question inline form.
