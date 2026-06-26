@@ -353,6 +353,15 @@
   }
   .zoomctl button:hover { background: #f0f2f5; }
   .zoomctl .lens { width: 16px; height: 16px; display: block; }
+  #forAllLabel {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  #forAllLabel svg { width: 20px; height: 20px; display: block; }
+  #forAllLabel input { cursor: pointer; margin: 0; }
 
   /* ---- Shared controls ---- */
   button {
@@ -535,6 +544,16 @@
         <span id="gradeZoomLabel">100%</span>
         <button id="btnGradeZoomIn" title="Zoom in grading">+</button>
       </span>
+      <label id="forAllLabel" title="When on, Add/Remove question applies to all students; when off, only the current student">
+        <input type="checkbox" id="forAllCheck" checked>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="9" cy="7" r="4"/>
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+        </svg>
+      </label>
     </div>
   </div>
 </div>
@@ -562,7 +581,12 @@ if (window.pdfjsLib) {
 }
 
 // ---- App state ----
-let schemeQuestions = [];      // [{ title, max, scores:[..] }]
+// Each student carries its own question scheme. `schemeQuestions` is a live alias
+// to the currently displayed student's array (a standalone "draft" when there is
+// no current student); `schemeByStudent` holds every student's array.
+let schemeByStudent = {};      // { name: [{ title, max, scores:[..] }, ...] }
+let schemeQuestions = [];      // alias of the current student's scheme (or a draft)
+let forAll = true;             // "for all" switch: add/remove question affects all students
 let students = [];             // ["e1", "e2", ...]
 let gradesByStudent = {};      // { name: { title: selectedScore } }
 let commentsByStudent = {};    // { name: { title: commentString } }
@@ -619,51 +643,31 @@ function twoColMap(rows) {
   return map;
 }
 
-// Index a matrix sheet whose row 0 is ["", ...question titles] and whose first
-// column is the student name. Returns helpers to read cells by (name, title),
-// by the first/any non-empty cell in a title's column (used to recover a
-// question's score options regardless of which student row carries them).
-function matrixIndex(rows) {
-  const header = rows[0] || [];
-  const colOf = {};       // title -> column index
-  const titles = [];
-  for (let k = 1; k < header.length; k++) {
-    const t = cell(header, k);
-    if (!t || t in colOf) continue;
-    colOf[t] = k;
-    titles.push(t);
+// Parse a per-student "alternating" sheet: a header row (student name, then that
+// student's question titles) immediately followed by a data row (blank first cell,
+// then the matching values). Used for the Grades, Comments and Grading_Scheme
+// sheets. Returns the student order plus, per student, the ordered titles and a
+// { title: rawValue } map.
+function parseAlternating(rows) {
+  const order = [], titlesByName = {}, valuesByName = {};
+  for (let i = 0; i < (rows || []).length; i++) {
+    const name = cell(rows[i], 0);
+    if (!name) continue;          // skip data rows (blank first cell) and blanks
+    const header = rows[i];
+    const data = rows[i + 1] || [];
+    i++;                          // consume the paired data row
+    const titles = [], values = {};
+    for (let k = 1; k < header.length; k++) {
+      const t = cell(header, k);
+      if (!t || t in values) continue;
+      titles.push(t);
+      values[t] = cell(data, k);
+    }
+    if (!(name in valuesByName)) order.push(name);
+    titlesByName[name] = titles;
+    valuesByName[name] = values;
   }
-  const data = rows.slice(1);
-  const colValues = (title) => {
-    const col = colOf[title];
-    if (col === undefined) return [];
-    return data.map(r => cell(r, col)).filter(Boolean);
-  };
-  return {
-    titles,
-    get(name, title) {
-      const col = colOf[title];
-      if (col === undefined) return "";
-      const row = data.find(r => cell(r, 0) === name);
-      return row ? cell(row, col) : "";
-    },
-    firstInColumn(title) { return colValues(title)[0] || ""; },
-    allInColumn(title) { return colValues(title); },
-  };
-}
-
-// Read the "Grading_Scheme" sheet (one row per question: [title, "s1 s2 s3"]).
-// Column 1 is the question title; column 2 is a whitespace-separated score list.
-// Returns ordered titles plus a title -> sorted-numbers lookup.
-function parseGradingScheme(rows) {
-  const map = {}, titles = [];
-  for (const row of rows || []) {
-    const title = cell(row, 0);
-    if (!title || title in map) continue;
-    map[title] = parseScoreList(cell(row, 1));
-    titles.push(title);
-  }
-  return { titles, get: t => map[t] || [] };
+  return { order, titlesByName, valuesByName };
 }
 
 // ---- Comments ----
@@ -713,20 +717,57 @@ function parseScoreList(text) {
   )).sort((a, b) => a - b);
 }
 
+// The question scheme array for a student. Creates an empty array on first use.
+// An empty/falsy name returns the shared "draft" scheme (used before any student
+// exists); `schemeQuestions` is kept pointing at the current student's array.
+function schemeFor(name) {
+  if (!name) return schemeQuestions;
+  return schemeByStudent[name] || (schemeByStudent[name] = []);
+}
+
 // A fresh grade map with each question set to its lowest score option.
-function defaultGrades() {
+function defaultGrades(scheme) {
   const g = {};
-  for (const q of schemeQuestions) g[q.title] = q.scores[0];
+  for (const q of (scheme || schemeQuestions)) g[q.title] = q.scores[0];
   return g;
 }
 
-// Add a question to the scheme from the inline form, then re-render.
+// Add a question (with its score options) to one student's scheme, defaulting the
+// grade to the lowest option. No-op if that student already has the title.
+function addQuestionToStudent(name, title, max, scores) {
+  const scheme = schemeFor(name);
+  if (scheme.some(q => q.title === title)) return;
+  scheme.push({ title, max, scores: scores.slice() });
+  if (name) {
+    if (!gradesByStudent[name]) gradesByStudent[name] = {};
+    gradesByStudent[name][title] = scores[0];
+    if (!commentsByStudent[name]) commentsByStudent[name] = {};
+  }
+}
+
+// Remove a question (and its grade/comment) from one student's scheme.
+function removeQuestionFromStudent(name, title) {
+  const scheme = schemeFor(name);
+  const idx = scheme.findIndex(q => q.title === title);
+  if (idx >= 0) scheme.splice(idx, 1);
+  if (name) {
+    if (gradesByStudent[name]) delete gradesByStudent[name][title];
+    if (commentsByStudent[name]) delete commentsByStudent[name][title];
+  }
+}
+
+// Add a question from the inline form, then re-render. The "for all" switch
+// decides whether it applies to every student or only the current one.
 function addQuestion() {
   const aqTitle = document.getElementById("aqTitle");
   const aqScores = document.getElementById("aqScores");
 
   const title = aqTitle.value.trim();
   if (!title) { alert("Enter a question title."); aqTitle.focus(); return; }
+  if (!forAll && !currentStudent) {
+    alert('Select or add a student first, or check "for all" to add a question to every student.');
+    return;
+  }
   if (schemeQuestions.some(q => q.title === title)) {
     alert('A question titled "' + title + '" already exists.'); aqTitle.focus(); return;
   }
@@ -736,31 +777,32 @@ function addQuestion() {
   const max = scores[scores.length - 1]; // max = highest possible score
 
   saveCurrentStudent();
-  schemeQuestions.push({ title, max, scores });
-  for (const name of students) {
-    if (!gradesByStudent[name]) gradesByStudent[name] = {};
-    gradesByStudent[name][title] = scores[0];
-    if (!commentsByStudent[name]) commentsByStudent[name] = {};
+  if (forAll) {
+    if (students.length === 0) addQuestionToStudent("", title, max, scores); // draft
+    else for (const name of students) addQuestionToStudent(name, title, max, scores);
+  } else {
+    addQuestionToStudent(currentStudent, title, max, scores);
   }
   aqTitle.value = ""; aqScores.value = "";
   renderQuestions();
-  loadStudent(currentStudent);
   aqTitle.focus();
 }
 
-// Remove a question from the scheme and drop its data for every student.
+// Remove a question. The "for all" switch decides whether it is dropped for every
+// student or only the current one.
 function removeQuestion(title) {
-  if (!confirm('Remove question "' + title + '"? Its scores and comments for all students will be lost.')) return;
+  const msg = forAll
+    ? 'Remove question "' + title + '"? Its scores and comments for all students will be lost.'
+    : 'Remove question "' + title + '" for ' + (currentStudent || "this student") + '? Its score and comment will be lost.';
+  if (!confirm(msg)) return;
   saveCurrentStudent();
-  const idx = schemeQuestions.findIndex(q => q.title === title);
-  if (idx < 0) return;
-  schemeQuestions.splice(idx, 1);
-  for (const name of students) {
-    if (gradesByStudent[name]) delete gradesByStudent[name][title];
-    if (commentsByStudent[name]) delete commentsByStudent[name][title];
+  if (forAll) {
+    if (students.length === 0) removeQuestionFromStudent("", title); // draft
+    else for (const name of students) removeQuestionFromStudent(name, title);
+  } else {
+    removeQuestionFromStudent(currentStudent, title);
   }
   renderQuestions();
-  loadStudent(currentStudent);
 }
 
 // =====================================================================
@@ -1000,7 +1042,7 @@ function refreshCheckedStyles() {
 function computeTotal(name) {
   const grades = gradesByStudent[name] || {};
   let sum = 0;
-  for (const q of schemeQuestions) {
+  for (const q of schemeFor(name)) {
     const v = (typeof grades[q.title] === "number") ? grades[q.title] : q.scores[0];
     if (typeof v === "number" && !isNaN(v)) sum += v;
   }
@@ -1028,26 +1070,42 @@ function updateTotalMax() {
 // Students & per-student state
 // =====================================================================
 
-// Add a single student by name (from the "+" button).
+// Switch the displayed student: persist the current one, repoint the scheme alias
+// at the target's questions, and re-render (each student can have a different set
+// of questions, so the question DOM must be rebuilt, not just re-applied).
+function switchToStudent(name) {
+  saveCurrentStudent();
+  currentStudent = name || "";
+  schemeQuestions = schemeFor(currentStudent);
+  renderQuestions();          // its tail calls loadStudent() to apply stored values
+  updateNavButtons();
+}
+
+// A deep copy of a scheme array, so a new student's questions are independent.
+function cloneScheme(scheme) {
+  return scheme.map(q => ({ title: q.title, max: q.max, scores: q.scores.slice() }));
+}
+
+// Add a single student by name (from the "+" button). New students inherit a copy
+// of the currently selected student's questions (the draft when none).
 function addStudent() {
   const name = (studentSelect.value || "").trim();
   if (!name) return;
   if (students.indexOf(name) >= 0) {
-    saveCurrentStudent();
-    loadStudent(name);
-    updateNavButtons();
+    switchToStudent(name);
     return;
   }
   saveCurrentStudent();
+  const scheme = cloneScheme(schemeFor(currentStudent));
   students.push(name);
-  gradesByStudent[name] = schemeQuestions.length ? defaultGrades() : {};
+  schemeByStudent[name] = scheme;
+  gradesByStudent[name] = scheme.length ? defaultGrades(scheme) : {};
   commentsByStudent[name] = {};
   feedbackByStudent[name] = "";
   const fp = parseInt(firstPageInput.value, 10) || (pageCanvases.length ? currentVisiblePage() : 0);
   if (fp >= 1) firstPageByStudent[name] = fp;
   studentSelect.value = name;
-  loadStudent(name);
-  updateNavButtons();
+  switchToStudent(name);
 }
 
 // Remove the currently selected student (from the "−" button).
@@ -1058,24 +1116,21 @@ function removeStudent() {
   }
   if (!confirm('Remove student "' + currentStudent + '" and their grades?')) return;
   const idx = students.indexOf(currentStudent);
+  delete schemeByStudent[currentStudent];
   delete gradesByStudent[currentStudent];
   delete commentsByStudent[currentStudent];
   delete feedbackByStudent[currentStudent];
   delete firstPageByStudent[currentStudent];
   students.splice(idx, 1);
   if (students.length === 0) {
-    currentStudent = "";
+    schemeQuestions = [];     // fresh empty draft
     studentSelect.value = "";
     firstPageInput.value = "";
-    loadStudent("");
-    updateNavButtons();
+    switchToStudent("");
     return;
   }
-  const next = students[Math.min(idx, students.length - 1)];
-  currentStudent = next;
-  studentSelect.value = next;
-  loadStudent(next);
-  updateNavButtons();
+  studentSelect.value = students[Math.min(idx, students.length - 1)];
+  switchToStudent(studentSelect.value);
 }
 
 // Zoom the grading panel in/out (CSS zoom on the questions container).
@@ -1123,27 +1178,14 @@ function loadGradesWorkbook(buf) {
 // Rebuild all state from the save sheets (see buildWorkbook for the layout).
 // `s` holds each sheet as an array of cell-arrays. Replaces all current state.
 function loadWorkbook(s) {
-  const gs = parseGradingScheme(s.gradingScheme);
-  const gr = matrixIndex(s.grades);
-  const cm = matrixIndex(s.comments);
-
-  // Question order comes from the Grading_Scheme rows; fall back to the grades
-  // matrix header if that sheet is missing/empty.
-  let titles = gs.titles.length ? gs.titles : gr.titles;
-
-  // Rebuild the scheme: a question's score options come from its Grading_Scheme
-  // row, falling back to the distinct grades observed for it, then [0].
-  schemeQuestions = titles.map(title => {
-    let scores = gs.get(title);
-    if (scores.length === 0) {
-      scores = parseScoreList(gr.allInColumn(title).join(" "));
-      if (scores.length === 0) scores = [0];
-    }
-    return { title, max: scores[scores.length - 1], scores };
-  });
+  const gs = parseAlternating(s.gradingScheme);
+  const gr = parseAlternating(s.grades);
+  const cm = parseAlternating(s.comments);
 
   // Replace all state.
   students = [];
+  schemeByStudent = {};
+  schemeQuestions = [];
   gradesByStudent = {};
   commentsByStudent = {};
   feedbackByStudent = {};
@@ -1154,27 +1196,56 @@ function loadWorkbook(s) {
   const pageMap = twoColMap(s.pageInfo);
   const fbMap = twoColMap(s.feedback);
 
+  // Build one student's scheme from the Grading_Scheme rows: a question's score
+  // options come from its score-list cell, falling back to the distinct grades
+  // observed for it, then [0]. Titles fall back to the Grades sheet if the
+  // Grading_Scheme is missing this student.
+  const buildScheme = (name) => {
+    const titles = (gs.titlesByName[name] && gs.titlesByName[name].length)
+      ? gs.titlesByName[name]
+      : (gr.titlesByName[name] || []);
+    const scoreVals = gs.valuesByName[name] || {};
+    const gradeVals = gr.valuesByName[name] || {};
+    return titles.map(title => {
+      let scores = parseScoreList(scoreVals[title]);
+      if (scores.length === 0) scores = parseScoreList(gradeVals[title]);
+      if (scores.length === 0) scores = [0];
+      return { title, max: scores[scores.length - 1], scores };
+    });
+  };
+
+  // Student order/list comes from the Students sheet; include any extra students
+  // that only appear in the data sheets (so nothing silently drops).
+  const names = [];
   for (const row of s.students) {
     const name = cell(row, 0);
-    if (!name || students.indexOf(name) >= 0) continue;
+    if (name && names.indexOf(name) < 0) names.push(name);
+  }
+  for (const name of [...gs.order, ...gr.order, ...cm.order])
+    if (names.indexOf(name) < 0) names.push(name);
+
+  for (const name of names) {
     students.push(name);
+    const scheme = schemeByStudent[name] = buildScheme(name);
     const grades = gradesByStudent[name] = {};
     const comments = commentsByStudent[name] = {};
     feedbackByStudent[name] = fbMap[name] || "";
     const fp = parseInt(pageMap[name], 10);
     if (fp >= 1) firstPageByStudent[name] = fp;
-    for (const q of schemeQuestions) {
-      const raw = gr.get(name, q.title);
-      if (raw !== "") { const v = toNum(raw); if (!isNaN(v)) grades[q.title] = v; }
-      const c = cm.get(name, q.title);
+    const gradeVals = gr.valuesByName[name] || {};
+    const commentVals = cm.valuesByName[name] || {};
+    for (const q of scheme) {
+      const raw = gradeVals[q.title];
+      if (raw != null && raw !== "") { const v = toNum(raw); if (!isNaN(v)) grades[q.title] = v; }
+      const c = commentVals[q.title];
       if (c) comments[q.title] = c;
     }
   }
 
   currentStudent = students.length ? students[0] : "";
+  schemeQuestions = schemeFor(currentStudent);
   studentSelect.value = currentStudent;
-  renderQuestions();
-  loadStudent(currentStudent);
+  renderQuestions();          // its tail calls loadStudent() to apply values
   updateNavButtons();
 }
 
@@ -1220,12 +1291,10 @@ function loadStudent(name) {
 
 function moveStudent(delta) {
   if (students.length === 0) return;
-  saveCurrentStudent();
   let idx = students.indexOf(currentStudent);
   if (idx < 0) idx = 0;
   idx = Math.min(students.length - 1, Math.max(0, idx + delta));
-  loadStudent(students[idx]);
-  updateNavButtons();
+  switchToStudent(students[idx]);
 }
 
 function updateNavButtons() {
@@ -1352,15 +1421,23 @@ function updatePageControls() {
 //   Grades         — students × questions matrix, cell = obtained grade (number)
 //   Comments       — students × questions matrix, cell = comment
 function buildWorkbook() {
-  const titles = schemeQuestions.map(q => q.title);
+  // Each student now owns its own questions, so the Grades, Comments and
+  // Grading_Scheme sheets use a per-student "alternating" layout: a header row
+  // [name, ...question titles] immediately followed by a data row ["", ...values]
+  // (blank first cell so the parser can tell headers from data). When there are no
+  // students yet, emit one pair under a blank name so a draft scheme is at least
+  // recorded in the file (a student is needed to reload it, since questions are
+  // owned per student).
+  const names = students.length ? students : [""];
 
-  // A students × questions matrix sheet (used for "Grades" and "Comments").
-  // Row 0 is ["", ...titles]; when there are no students yet, emit one blank-name
-  // row so the header (question titles) still round-trips.
-  const matrix = (valueFn) => {
-    const rows = [["", ...titles]];
-    const names = students.length ? students : [null];
-    for (const n of names) rows.push([n || "", ...schemeQuestions.map(q => valueFn(n, q))]);
+  // Build an alternating sheet: cellFn(name, q) yields each data-row cell.
+  const alternating = (cellFn) => {
+    const rows = [];
+    for (const n of names) {
+      const scheme = schemeFor(n);
+      rows.push([n, ...scheme.map(q => q.title)]);
+      rows.push(["", ...scheme.map(q => cellFn(n, q))]);
+    }
     return rows;
   };
 
@@ -1375,10 +1452,10 @@ function buildWorkbook() {
     { name: "Students",       aoa: students.map(n => [n]) },
     { name: "Page info",      aoa: students.map(n => [n, firstPageByStudent[n] || ""]) },
     { name: "Feedback",       aoa: students.map(n => [n, feedbackByStudent[n] || ""]) },
-    // One row per question: [title, "score1 score2 ..."] (questions + score options).
-    { name: "Grading_Scheme", aoa: schemeQuestions.map(q => [q.title, q.scores.join(" ")]) },
-    { name: "Grades",         aoa: matrix(gradeCell) },
-    { name: "Comments",       aoa: matrix((n, q) => (n && commentsByStudent[n] && commentsByStudent[n][q.title]) || "") },
+    // Per student: [name, ...titles] then ["", ..."score1 score2 ..." per question].
+    { name: "Grading_Scheme", aoa: alternating((n, q) => q.scores.join(" ")) },
+    { name: "Grades",         aoa: alternating(gradeCell) },
+    { name: "Comments",       aoa: alternating((n, q) => (n && commentsByStudent[n] && commentsByStudent[n][q.title]) || "") },
   ];
 }
 
@@ -1428,14 +1505,14 @@ function htmlEscape(s) {
 // language-agnostic (no labels), ready to print and cut apart. Reuses
 // computeTotal() and fmt() so totals match the on-screen UI exactly.
 function buildGradesHTML() {
-  const maxSum = schemeQuestions.reduce((acc, q) => acc + (isNaN(q.max) ? 0 : q.max), 0);
-
   const slips = students.map(name => {
+    const scheme = schemeFor(name);
+    const maxSum = scheme.reduce((acc, q) => acc + (isNaN(q.max) ? 0 : q.max), 0);
     const grades = gradesByStudent[name] || {};
     const comments = commentsByStudent[name] || {};
     const feedback = (feedbackByStudent[name] || "").trim();
 
-    const rows = schemeQuestions.map(q => {
+    const rows = scheme.map(q => {
       const v = (typeof grades[q.title] === "number") ? grades[q.title] : q.scores[0];
       const comment = (comments[q.title] || "").trim();
       return (
@@ -1560,7 +1637,7 @@ document.getElementById("fileGrades").addEventListener("change", e => readFile(e
 // Student picker is an editable combobox: the popup lists existing students; choosing one
 // switches to it. Typing a new name + "+" adds it (see addStudent).
 studentSelect._comboItems = () => students;
-studentSelect._comboSelect = (name) => { saveCurrentStudent(); loadStudent(name); updateNavButtons(); };
+studentSelect._comboSelect = (name) => { switchToStudent(name); };
 studentSelect._comboEmpty = "—";
 studentSelect.addEventListener("focus", () => openCombo(studentSelect));
 studentArrow.addEventListener("mousedown", e => {
@@ -1626,6 +1703,12 @@ feedbackDel.addEventListener("mousedown", e => {
   bankRemove(feedbackBank, feedbackBankSet, globalFeedback.value);
   if (activeComboInput === globalFeedback && comboPopup.classList.contains("open")) openCombo(globalFeedback);
 });
+
+// "For all" switch: decides whether Add/Remove question affects every student
+// (default) or only the current one.
+const forAllCheck = document.getElementById("forAllCheck");
+forAll = forAllCheck.checked;
+forAllCheck.addEventListener("change", () => { forAll = forAllCheck.checked; });
 
 // Zoom controls.
 document.getElementById("btnPdfZoomIn").addEventListener("click", () => zoomPdf(1.2));
