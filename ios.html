@@ -334,9 +334,27 @@
     background: #fff;
     color: var(--text);
   }
+  #aqGroupCombo { flex: 2 1 110px; min-width: 0; }
   #aqTitle { flex: 2 1 120px; min-width: 0; }
   #aqScores { flex: 3 1 160px; min-width: 0; }
   #addQuestionBar button { flex: 0 0 auto; }
+  /* Group separator inside the question list: a labelled line carrying the subtotal. */
+  .qgroup {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 10px 0 2px;
+    padding-bottom: 4px;
+    border-bottom: 2px solid var(--border);
+  }
+  .qgroup:first-child { margin-top: 0; }
+  .qgroup-name { font-weight: 700; font-size: 14px; color: var(--text); }
+  .qgroup-right { display: flex; align-items: center; gap: 8px; }
+  .qgroup-sub {
+    font-size: 13px; font-weight: 700; color: var(--muted);
+    white-space: nowrap; font-variant-numeric: tabular-nums;
+  }
   #totalBar {
     flex: 0 0 auto;
     display: flex;
@@ -370,12 +388,6 @@
   }
   .zoomctl button:hover { background: #f0f2f5; }
   .zoomctl .lens { width: 16px; height: 16px; display: block; }
-  #forAllBar {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    margin-top: 8px;
-  }
   #forAllLabel {
     display: inline-flex;
     align-items: center;
@@ -537,21 +549,13 @@
           <text x="12" y="13" text-anchor="middle" stroke="none" fill="currentColor"
                 font-size="9" font-weight="bold" font-family="sans-serif">?</text>
         </svg>
+        <div class="combo" id="aqGroupCombo" title="Question group (leave blank for none)">
+          <input type="text" id="aqGroup" class="qcomment" autocomplete="off" placeholder="I.">
+          <button type="button" id="aqGroupArrow" class="combo-arrow" tabindex="-1">&#9662;</button>
+        </div>
         <input type="text" id="aqTitle" placeholder="1. (a)" title="Question title">
         <input type="text" id="aqScores" placeholder="0 0.5 1 1.5 2" title="Possible scores">
         <button id="aqAdd" aria-label="Add question" title="Add question">+</button>
-      </div>
-      <div id="forAllBar">
-        <label id="forAllLabel" title="Apply to all students">
-          <input type="checkbox" id="forAllCheck" checked>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <circle cx="9" cy="7" r="4"/>
-            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-          </svg>
-        </label>
       </div>
     </div>
     <div id="totalBar">
@@ -579,6 +583,16 @@
         <span id="gradeZoomLabel">100%</span>
         <button id="btnGradeZoomIn" title="Zoom in grading">+</button>
       </span>
+      <label id="forAllLabel" title="Apply to all students">
+        <input type="checkbox" id="forAllCheck" checked>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="9" cy="7" r="4"/>
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+        </svg>
+      </label>
     </div>
   </div>
 </div>
@@ -609,8 +623,9 @@ if (window.pdfjsLib) {
 // Each student carries its own question scheme. `schemeQuestions` is a live alias
 // to the currently displayed student's array (a standalone "draft" when there is
 // no current student); `schemeByStudent` holds every student's array.
-let schemeByStudent = {};      // { name: [{ title, max, scores:[..] }, ...] }
+let schemeByStudent = {};      // { name: [{ title, max, scores:[..], group }, ...] }
 let schemeQuestions = [];      // alias of the current student's scheme (or a draft)
+let questionGroups = [];       // distinct named groups in use across all students (combobox list)
 let forAll = true;             // "for all" switch: add/remove question affects all students
 let students = [];             // ["e1", "e2", ...]
 let gradesByStudent = {};      // { name: { title: selectedScore } }
@@ -641,7 +656,6 @@ const totalValueEl  = document.getElementById("totalValue");
 const totalMaxEl    = document.getElementById("totalMax");
 const comboPopup    = document.getElementById("comboPopup");
 const addQuestionBar = document.getElementById("addQuestionBar");
-const forAllBar = document.getElementById("forAllBar");
 const globalFeedback = document.getElementById("globalFeedback");
 const feedbackAdd   = document.getElementById("feedbackAdd");
 const feedbackDel   = document.getElementById("feedbackDel");
@@ -751,51 +765,86 @@ function schemeFor(name) {
   return schemeByStudent[name] || (schemeByStudent[name] = []);
 }
 
+// Within a student, a question is identified by its key = group + title (the student
+// is the per-student map/row dimension). Named groups are prefixed "Group :: Title";
+// default-group questions are just the title (so the key matches the plain/legacy form).
+// This is the identifier used in state maps, the DOM, and the ODS column headers; the
+// UI and exported slips display only `q.title`.
+const QKEY_SEP = " :: ";
+function qKey(q) { return (q.group ? q.group + QKEY_SEP : "") + q.title; }
+// Split an ODS column header back into { group, title }. `group` is null when the
+// header has no separator (a default-group question, or a legacy title-only header).
+function splitHeader(h) {
+  const i = h.indexOf(QKEY_SEP);
+  return i < 0 ? { group: null, title: h }
+               : { group: h.slice(0, i), title: h.slice(i + QKEY_SEP.length) };
+}
+
 // A fresh grade map with each question set to its lowest score option.
 function defaultGrades(scheme) {
   const g = {};
-  for (const q of (scheme || schemeQuestions)) g[q.title] = q.scores[0];
+  for (const q of (scheme || schemeQuestions)) g[qKey(q)] = q.scores[0];
   return g;
 }
 
 // Add a question (with its score options) to one student's scheme, defaulting the
-// grade to the lowest option. No-op if that student already has the title.
-function addQuestionToStudent(name, title, max, scores) {
+// grade to the lowest option. No-op if that student already has this group+title.
+function addQuestionToStudent(name, title, max, scores, group) {
   const scheme = schemeFor(name);
-  if (scheme.some(q => q.title === title)) return;
-  scheme.push({ title, max, scores: scores.slice() });
+  const q = { title, max, scores: scores.slice(), group: group || "" };
+  if (scheme.some(x => qKey(x) === qKey(q))) return;
+  scheme.push(q);
   if (name) {
     if (!gradesByStudent[name]) gradesByStudent[name] = {};
-    gradesByStudent[name][title] = scores[0];
+    gradesByStudent[name][qKey(q)] = scores[0];
     if (!commentsByStudent[name]) commentsByStudent[name] = {};
   }
 }
 
-// Remove a question (and its grade/comment) from one student's scheme.
-function removeQuestionFromStudent(name, title) {
+// Remove a question (and its grade/comment) from one student's scheme, by key.
+function removeQuestionFromStudent(name, key) {
   const scheme = schemeFor(name);
-  const idx = scheme.findIndex(q => q.title === title);
+  const idx = scheme.findIndex(q => qKey(q) === key);
   if (idx >= 0) scheme.splice(idx, 1);
   if (name) {
-    if (gradesByStudent[name]) delete gradesByStudent[name][title];
-    if (commentsByStudent[name]) delete commentsByStudent[name][title];
+    if (gradesByStudent[name]) delete gradesByStudent[name][key];
+    if (commentsByStudent[name]) delete commentsByStudent[name][key];
   }
+}
+
+// Rebuild `questionGroups` (the combobox suggestion list) from the groups actually
+// in use across every student's scheme. Preserves first-seen order and drops named
+// groups no longer used anywhere. The default group ("") is implicit, never listed.
+function recomputeGroups() {
+  const seen = new Set();
+  const list = [];
+  const scan = (scheme) => {
+    for (const q of scheme) {
+      const g = q.group || "";
+      if (g && !seen.has(g)) { seen.add(g); list.push(g); }
+    }
+  };
+  if (students.length === 0) scan(schemeFor(""));
+  else for (const name of students) scan(schemeFor(name));
+  questionGroups = list;
 }
 
 // Add a question from the inline form, then re-render. The "for all" switch
 // decides whether it applies to every student or only the current one.
 function addQuestion() {
+  const aqGroup = document.getElementById("aqGroup");
   const aqTitle = document.getElementById("aqTitle");
   const aqScores = document.getElementById("aqScores");
 
+  const group = aqGroup.value.trim();
   const title = aqTitle.value.trim();
   if (!title) { alert("Enter a question title."); aqTitle.focus(); return; }
   if (!forAll && !currentStudent) {
     alert('Select or add a student first, or check "for all" to add a question to every student.');
     return;
   }
-  if (schemeQuestions.some(q => q.title === title)) {
-    alert('A question titled "' + title + '" already exists.'); aqTitle.focus(); return;
+  if (schemeQuestions.some(q => q.title === title && (q.group || "") === group)) {
+    alert('A question titled "' + title + '" already exists in this group.'); aqTitle.focus(); return;
   }
   // Whitespace/";"-separated, dot decimals; deduped and sorted ascending.
   const scores = parseScoreList(aqScores.value);
@@ -804,22 +853,26 @@ function addQuestion() {
 
   saveCurrentStudent();
   if (forAll) {
-    if (students.length === 0) addQuestionToStudent("", title, max, scores); // draft
-    else for (const name of students) addQuestionToStudent(name, title, max, scores);
+    if (students.length === 0) addQuestionToStudent("", title, max, scores, group); // draft
+    else for (const name of students) addQuestionToStudent(name, title, max, scores, group);
   } else {
-    addQuestionToStudent(currentStudent, title, max, scores);
+    addQuestionToStudent(currentStudent, title, max, scores, group);
   }
-  aqTitle.value = ""; aqScores.value = "";
+  recomputeGroups();
+  aqTitle.value = ""; aqScores.value = ""; // keep the group, to add several questions to it quickly
   renderQuestions();
   aqTitle.focus();
 }
 
-// Swap a question with its neighbour within one student's scheme. No-op if the
-// title is absent or the target position is out of range.
-function moveQuestionInScheme(scheme, title, delta) {
-  const i = scheme.findIndex(q => q.title === title);
+// Swap a question (by key) with its nearest same-group neighbour within one student's
+// scheme, so reordering stays inside the group. No-op if the key is absent or it is
+// already at its group's edge in that direction.
+function moveQuestionInScheme(scheme, key, delta) {
+  const i = scheme.findIndex(q => qKey(q) === key);
   if (i < 0) return;
-  const j = i + delta;
+  const group = scheme[i].group || "";
+  let j = i + delta;
+  while (j >= 0 && j < scheme.length && (scheme[j].group || "") !== group) j += delta;
   if (j < 0 || j >= scheme.length) return;
   const tmp = scheme[i];
   scheme[i] = scheme[j];
@@ -828,32 +881,97 @@ function moveQuestionInScheme(scheme, title, delta) {
 
 // Reorder a question one step. The "for all" switch decides whether the move is
 // mirrored in every student's scheme or only the current one.
-function moveQuestion(title, dir) {
+function moveQuestion(key, dir) {
   const delta = dir === "up" ? -1 : 1;
   saveCurrentStudent();
   if (forAll) {
-    if (students.length === 0) moveQuestionInScheme(schemeFor(""), title, delta); // draft
-    else for (const name of students) moveQuestionInScheme(schemeFor(name), title, delta);
+    if (students.length === 0) moveQuestionInScheme(schemeFor(""), key, delta); // draft
+    else for (const name of students) moveQuestionInScheme(schemeFor(name), key, delta);
   } else {
-    moveQuestionInScheme(schemeFor(currentStudent), title, delta);
+    moveQuestionInScheme(schemeFor(currentStudent), key, delta);
   }
   renderQuestions();
 }
 
-// Remove a question. The "for all" switch decides whether it is dropped for every
-// student or only the current one.
-function removeQuestion(title) {
+// Swap a whole group with its neighbour within one student's scheme, then rebuild the
+// array from the reordered groups (which also compacts each group into one block).
+function moveGroupInScheme(scheme, group, delta) {
+  const groups = groupedScheme(scheme);
+  const i = groups.findIndex(g => g.group === group);
+  if (i < 0) return;
+  const j = i + delta;
+  if (j < 0 || j >= groups.length) return;
+  const tmp = groups[i];
+  groups[i] = groups[j];
+  groups[j] = tmp;
+  scheme.length = 0;
+  for (const g of groups) for (const q of g.questions) scheme.push(q);
+}
+
+// Reorder a whole group one step. The "for all" switch decides whether the move is
+// mirrored in every student's scheme or only the current one.
+function moveGroup(group, dir) {
+  const delta = dir === "up" ? -1 : 1;
+  saveCurrentStudent();
+  if (forAll) {
+    if (students.length === 0) moveGroupInScheme(schemeFor(""), group, delta); // draft
+    else for (const name of students) moveGroupInScheme(schemeFor(name), group, delta);
+  } else {
+    moveGroupInScheme(schemeFor(currentStudent), group, delta);
+  }
+  renderQuestions();
+}
+
+// Remove a question (by key). The "for all" switch decides whether it is dropped for
+// every student or only the current one.
+function removeQuestion(key) {
+  const title = (schemeQuestions.find(q => qKey(q) === key) || {}).title || key;
   const msg = forAll
     ? 'Remove question "' + title + '"? Its scores and comments for all students will be lost.'
     : 'Remove question "' + title + '" for ' + (currentStudent || "this student") + '? Its score and comment will be lost.';
   if (!confirm(msg)) return;
   saveCurrentStudent();
   if (forAll) {
-    if (students.length === 0) removeQuestionFromStudent("", title); // draft
-    else for (const name of students) removeQuestionFromStudent(name, title);
+    if (students.length === 0) removeQuestionFromStudent("", key); // draft
+    else for (const name of students) removeQuestionFromStudent(name, key);
   } else {
-    removeQuestionFromStudent(currentStudent, title);
+    removeQuestionFromStudent(currentStudent, key);
   }
+  recomputeGroups();
+  renderQuestions();
+}
+
+// Remove every question in a group (and its grades/comments) from one student's scheme.
+function removeGroupFromStudent(name, group) {
+  const scheme = schemeFor(name);
+  for (let i = scheme.length - 1; i >= 0; i--) {
+    const q = scheme[i];
+    if ((q.group || "") !== group) continue;
+    const key = qKey(q);
+    scheme.splice(i, 1);
+    if (name) {
+      if (gradesByStudent[name]) delete gradesByStudent[name][key];
+      if (commentsByStudent[name]) delete commentsByStudent[name][key];
+    }
+  }
+}
+
+// Remove a whole group and all its questions. The "for all" switch decides whether it
+// is dropped for every student or only the current one.
+function removeGroup(group) {
+  const label = group ? 'group "' + group + '"' : "the default group";
+  const msg = forAll
+    ? 'Remove ' + label + ' and all its questions? Their scores and comments for all students will be lost.'
+    : 'Remove ' + label + ' and all its questions for ' + (currentStudent || "this student") + '? Their scores and comments will be lost.';
+  if (!confirm(msg)) return;
+  saveCurrentStudent();
+  if (forAll) {
+    if (students.length === 0) removeGroupFromStudent("", group); // draft
+    else for (const name of students) removeGroupFromStudent(name, group);
+  } else {
+    removeGroupFromStudent(currentStudent, group);
+  }
+  recomputeGroups();
   renderQuestions();
 }
 
@@ -879,22 +997,25 @@ function feedbackIcon() {
   return svg;
 }
 
-function renderQuestions() {
-  questionsEl.innerHTML = "";
-  if (schemeQuestions.length === 0) {
-    const empty = document.createElement("div");
-    empty.id = "questionsEmpty";
-    // empty.innerHTML = 'No questions yet.<br>Click "Load" to open a file, or add a question below.';
-    empty.innerHTML = '';
-    questionsEl.appendChild(empty);
-    questionsEl.appendChild(addQuestionBar);
-    questionsEl.appendChild(forAllBar);
-    updateTotalMax();
-    recomputeTotal();
-    return;
+// Partition a scheme into groups: a list of { group, questions } in first-appearance
+// order, each gathering every question of that group (so a group renders once,
+// contiguously, even if its members are scattered in the array).
+function groupedScheme(scheme) {
+  const groups = [];
+  const byName = {};
+  for (const q of scheme) {
+    const g = q.group || "";
+    let bucket = byName[g];
+    if (!bucket) { bucket = byName[g] = { group: g, questions: [] }; groups.push(bucket); }
+    bucket.questions.push(q);
   }
+  return groups;
+}
 
-  schemeQuestions.forEach((q, qIndex) => {
+// Build one question row. disableUp/disableDown reflect the question's position
+// within its own group (moves stay inside the group).
+function buildQuestionBlock(q, disableUp, disableDown) {
+    const key = qKey(q); // identifier for the DOM/state; the row still displays q.title
     const block = document.createElement("div");
     block.className = "question";
 
@@ -915,9 +1036,9 @@ function renderQuestions() {
 
       const radio = document.createElement("input");
       radio.type = "radio";
-      radio.name = "q_" + q.title;
+      radio.name = "q_" + key;
       radio.value = String(score);
-      radio.dataset.title = q.title;
+      radio.dataset.key = key;
       radio.addEventListener("change", onRadioChange);
 
       const txt = document.createElement("span");
@@ -937,7 +1058,7 @@ function renderQuestions() {
     comment.type = "text";
     comment.className = "qcomment";
     comment.placeholder = "";
-    comment.dataset.title = q.title;
+    comment.dataset.key = key;
     comment.autocomplete = "off";
     comment._comboItems = () => commentBank;
     comment._comboSelect = (val) => { comment.value = val; onCommentChange(comment); };
@@ -988,18 +1109,18 @@ function renderQuestions() {
     moveUp.type = "button";
     moveUp.className = "qmove";
     moveUp.title = "Move question up";
-    moveUp.dataset.title = q.title;
+    moveUp.dataset.key = key;
     moveUp.dataset.dir = "up";
-    moveUp.disabled = (qIndex === 0);
+    moveUp.disabled = disableUp;
     qmoveGroup.appendChild(moveUp);
 
     const moveDown = document.createElement("button");
     moveDown.type = "button";
     moveDown.className = "qmove";
     moveDown.title = "Move question down";
-    moveDown.dataset.title = q.title;
+    moveDown.dataset.key = key;
     moveDown.dataset.dir = "down";
-    moveDown.disabled = (qIndex === schemeQuestions.length - 1);
+    moveDown.disabled = disableDown;
     qmoveGroup.appendChild(moveDown);
 
     block.appendChild(qmoveGroup);
@@ -1009,25 +1130,88 @@ function renderQuestions() {
     remove.className = "qremove";
     remove.title = "Remove question";
     remove.textContent = "✕";
-    remove.dataset.title = q.title;
+    remove.dataset.key = key;
     block.appendChild(remove);
 
-    questionsEl.appendChild(block);
+    return block;
+}
+
+function renderQuestions() {
+  questionsEl.innerHTML = "";
+  if (schemeQuestions.length === 0) {
+    const empty = document.createElement("div");
+    empty.id = "questionsEmpty";
+    // empty.innerHTML = 'No questions yet.<br>Click "Load" to open a file, or add a question below.';
+    empty.innerHTML = '';
+    questionsEl.appendChild(empty);
+    questionsEl.appendChild(addQuestionBar);
+    updateTotalMax();
+    recomputeTotal();
+    return;
+  }
+
+  // Render group by group. Each group gets a separator row carrying its name, a live
+  // subtotal and up/down controls. The default group ("") shows a blank-named bar too,
+  // but only when it sits alongside named groups; a plain ungrouped list stays flat.
+  const groups = groupedScheme(schemeQuestions);
+  groups.forEach((grp, gi) => {
+    if (grp.group || groups.length > 1) {
+      const sep = document.createElement("div");
+      sep.className = "qgroup";
+      const nameSpan = document.createElement("span");
+      nameSpan.className = "qgroup-name";
+      nameSpan.textContent = grp.group;
+
+      const right = document.createElement("div");
+      right.className = "qgroup-right";
+      const subSpan = document.createElement("span");
+      subSpan.className = "qgroup-sub";
+      subSpan.dataset.group = grp.group;
+      right.appendChild(subSpan);
+
+      const gmoveGroup = document.createElement("div");
+      gmoveGroup.className = "qmove-group";
+      ["up", "down"].forEach(dir => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "qmove qgmove";
+        btn.title = "Move group " + dir;
+        btn.dataset.group = grp.group;
+        btn.dataset.dir = dir;
+        btn.disabled = dir === "up" ? (gi === 0) : (gi === groups.length - 1);
+        gmoveGroup.appendChild(btn);
+      });
+      right.appendChild(gmoveGroup);
+
+      const gremove = document.createElement("button");
+      gremove.type = "button";
+      gremove.className = "qremove qgremove";
+      gremove.title = "Remove group";
+      gremove.textContent = "✕";
+      gremove.dataset.group = grp.group;
+      right.appendChild(gremove);
+
+      sep.appendChild(nameSpan);
+      sep.appendChild(right);
+      questionsEl.appendChild(sep);
+    }
+    grp.questions.forEach((q, idx) => {
+      questionsEl.appendChild(buildQuestionBlock(q, idx === 0, idx === grp.questions.length - 1));
+    });
   });
 
   questionsEl.appendChild(addQuestionBar); // form sits at the bottom of the list
-  questionsEl.appendChild(forAllBar);      // "for all" switch directly below it
   updateTotalMax();
   loadStudent(currentStudent); // apply current student's selections
 }
 
 // Save a typed/selected comment for the current student and add it to the bank.
 function onCommentChange(input) {
-  const title = input.dataset.title;
+  const key = input.dataset.key;
   const value = input.value.trim();
   if (currentStudent) {
     if (!commentsByStudent[currentStudent]) commentsByStudent[currentStudent] = {};
-    commentsByStudent[currentStudent][title] = value;
+    commentsByStudent[currentStudent][key] = value;
   }
 }
 
@@ -1097,13 +1281,14 @@ function onRadioChange(e) {
 function selectOption(input) {
   if (!input) return;
   input.checked = true;
-  const title = input.dataset.title;
+  const key = input.dataset.key;
   const value = parseFloat(input.value);
   if (currentStudent && gradesByStudent[currentStudent]) {
-    gradesByStudent[currentStudent][title] = value;
+    gradesByStudent[currentStudent][key] = value;
   }
   refreshCheckedStyles();
   recomputeTotal();
+  recomputeSubtotals();
 }
 
 // Sync the ".checked" highlight class with the actually-selected radios.
@@ -1120,10 +1305,34 @@ function computeTotal(name) {
   const grades = gradesByStudent[name] || {};
   let sum = 0;
   for (const q of schemeFor(name)) {
-    const v = (typeof grades[q.title] === "number") ? grades[q.title] : q.scores[0];
+    const v = (typeof grades[qKey(q)] === "number") ? grades[qKey(q)] : q.scores[0];
     if (typeof v === "number" && !isNaN(v)) sum += v;
   }
   return sum;
+}
+
+// Per-group { sum, max } of a student's points (sum uses selected scores, defaulting
+// to each question's lowest option). Keyed by group name ("" = default group).
+function computeGroupTotals(name) {
+  const grades = gradesByStudent[name] || {};
+  const totals = {};
+  for (const q of schemeFor(name)) {
+    const g = q.group || "";
+    const t = totals[g] || (totals[g] = { sum: 0, max: 0 });
+    const v = (typeof grades[qKey(q)] === "number") ? grades[qKey(q)] : q.scores[0];
+    if (typeof v === "number" && !isNaN(v)) t.sum += v;
+    if (!isNaN(q.max)) t.max += q.max;
+  }
+  return totals;
+}
+
+// Refresh the on-screen subtotal of every named group from the current student's grades.
+function recomputeSubtotals() {
+  const totals = computeGroupTotals(currentStudent);
+  questionsEl.querySelectorAll(".qgroup-sub").forEach(span => {
+    const t = totals[span.dataset.group] || { sum: 0, max: 0 };
+    span.textContent = fmt(t.sum) + " / " + fmt(t.max);
+  });
 }
 
 function recomputeTotal() {
@@ -1160,7 +1369,7 @@ function switchToStudent(name) {
 
 // A deep copy of a scheme array, so a new student's questions are independent.
 function cloneScheme(scheme) {
-  return scheme.map(q => ({ title: q.title, max: q.max, scores: q.scores.slice() }));
+  return scheme.map(q => ({ title: q.title, max: q.max, scores: q.scores.slice(), group: q.group || "" }));
 }
 
 // Add a single student by name (from the "+" button). New students inherit a copy
@@ -1199,6 +1408,7 @@ function removeStudent() {
   delete feedbackByStudent[currentStudent];
   delete firstPageByStudent[currentStudent];
   students.splice(idx, 1);
+  recomputeGroups();          // a group only this student used is now gone
   if (students.length === 0) {
     schemeQuestions = [];     // fresh empty draft
     studentSelect.value = "";
@@ -1273,21 +1483,24 @@ function loadWorkbook(s) {
   const pageMap = twoColMap(s.pageInfo);
   const fbMap = twoColMap(s.feedback);
 
-  // Build one student's scheme from the Grading_Scheme rows: a question's score
-  // options come from its score-list cell, falling back to the distinct grades
-  // observed for it, then [0]. Titles fall back to the Grades sheet if the
-  // Grading_Scheme is missing this student.
+  // Build one student's scheme from the Grading_Scheme headers (falling back to Grades):
+  // each header is a question key that splits into group/title (a header without the
+  // separator is a default-group question); a question's score options come from its
+  // score-list cell, falling back to the distinct grades observed for it, then [0].
+  // `_h` carries the raw header so grades/comments can be read by it below.
   const buildScheme = (name) => {
-    const titles = (gs.titlesByName[name] && gs.titlesByName[name].length)
+    const headers = (gs.titlesByName[name] && gs.titlesByName[name].length)
       ? gs.titlesByName[name]
       : (gr.titlesByName[name] || []);
     const scoreVals = gs.valuesByName[name] || {};
     const gradeVals = gr.valuesByName[name] || {};
-    return titles.map(title => {
-      let scores = parseScoreList(scoreVals[title]);
-      if (scores.length === 0) scores = parseScoreList(gradeVals[title]);
+    return headers.map(h => {
+      const { group: g0, title } = splitHeader(h);
+      const group = g0 == null ? "" : g0;
+      let scores = parseScoreList(scoreVals[h]);
+      if (scores.length === 0) scores = parseScoreList(gradeVals[h]);
       if (scores.length === 0) scores = [0];
-      return { title, max: scores[scores.length - 1], scores };
+      return { title, max: scores[scores.length - 1], scores, group, _h: h };
     });
   };
 
@@ -1312,13 +1525,17 @@ function loadWorkbook(s) {
     const gradeVals = gr.valuesByName[name] || {};
     const commentVals = cm.valuesByName[name] || {};
     for (const q of scheme) {
-      const raw = gradeVals[q.title];
-      if (raw != null && raw !== "") { const v = toNum(raw); if (!isNaN(v)) grades[q.title] = v; }
-      const c = commentVals[q.title];
-      if (c) comments[q.title] = c;
+      // Read by the raw stored header, but store under the canonical key (migrates
+      // legacy title-keyed values onto group+title keys).
+      const raw = gradeVals[q._h];
+      if (raw != null && raw !== "") { const v = toNum(raw); if (!isNaN(v)) grades[qKey(q)] = v; }
+      const c = commentVals[q._h];
+      if (c) comments[qKey(q)] = c;
+      delete q._h;
     }
   }
 
+  recomputeGroups();
   currentStudent = students.length ? students[0] : "";
   schemeQuestions = schemeFor(currentStudent);
   studentSelect.value = currentStudent;
@@ -1331,12 +1548,12 @@ function saveCurrentStudent() {
   if (!currentStudent || !gradesByStudent[currentStudent]) return;
   const grades = gradesByStudent[currentStudent];
   for (const q of schemeQuestions) {
-    const checked = questionsEl.querySelector('input[name="q_' + cssEscape(q.title) + '"]:checked');
-    if (checked) grades[q.title] = parseFloat(checked.value);
+    const checked = questionsEl.querySelector('input[name="q_' + cssEscape(qKey(q)) + '"]:checked');
+    if (checked) grades[qKey(q)] = parseFloat(checked.value);
   }
   const comments = commentsByStudent[currentStudent] || (commentsByStudent[currentStudent] = {});
   questionsEl.querySelectorAll(".qcomment").forEach(input => {
-    comments[input.dataset.title] = input.value.trim();
+    comments[input.dataset.key] = input.value.trim();
   });
   feedbackByStudent[currentStudent] = globalFeedback.value;
 }
@@ -1351,14 +1568,15 @@ function loadStudent(name) {
   const comments = (currentStudent && commentsByStudent[currentStudent]) || {};
   for (const q of schemeQuestions) {
     // Fall back to the lowest option so the radio is always visibly pre-selected.
-    const value = (typeof grades[q.title] === "number") ? grades[q.title] : q.scores[0];
-    const radios = questionsEl.querySelectorAll('input[name="q_' + cssEscape(q.title) + '"]');
+    const value = (typeof grades[qKey(q)] === "number") ? grades[qKey(q)] : q.scores[0];
+    const radios = questionsEl.querySelectorAll('input[name="q_' + cssEscape(qKey(q)) + '"]');
     radios.forEach(r => { r.checked = (parseFloat(r.value) === value); });
-    const cinput = questionsEl.querySelector('.qcomment[data-title="' + cssEscape(q.title) + '"]');
-    if (cinput) cinput.value = comments[q.title] || "";
+    const cinput = questionsEl.querySelector('.qcomment[data-key="' + cssEscape(qKey(q)) + '"]');
+    if (cinput) cinput.value = comments[qKey(q)] || "";
   }
   refreshCheckedStyles();
   recomputeTotal();
+  recomputeSubtotals();
 
   // Reflect this student's first PDF page, and optionally jump the viewer there.
   const fp = currentStudent ? parseInt(firstPageByStudent[currentStudent], 10) : NaN;
@@ -1507,12 +1725,14 @@ function buildWorkbook() {
   // owned per student).
   const names = students.length ? students : [""];
 
-  // Build an alternating sheet: cellFn(name, q) yields each data-row cell.
+  // Build an alternating sheet: cellFn(name, q) yields each data-row cell. The header
+  // cell is the question key (qKey) so same-title questions in different groups stay
+  // distinct across a save/reload; default-group questions keep a plain-title header.
   const alternating = (cellFn) => {
     const rows = [];
     for (const n of names) {
       const scheme = schemeFor(n);
-      rows.push([n, ...scheme.map(q => q.title)]);
+      rows.push([n, ...scheme.map(q => qKey(q))]);
       rows.push(["", ...scheme.map(q => cellFn(n, q))]);
     }
     return rows;
@@ -1521,7 +1741,7 @@ function buildWorkbook() {
   // Emit grades as numeric cells (not formatted strings) so they survive Excel
   // round-trips and locale differences; blank when a question has no grade yet.
   const gradeCell = (n, q) => {
-    const v = (n && gradesByStudent[n]) ? gradesByStudent[n][q.title] : undefined;
+    const v = (n && gradesByStudent[n]) ? gradesByStudent[n][qKey(q)] : undefined;
     return (typeof v === "number" && !isNaN(v)) ? v : "";
   };
 
@@ -1532,7 +1752,7 @@ function buildWorkbook() {
     // Per student: [name, ...titles] then ["", ..."score1 score2 ..." per question].
     { name: "Grading_Scheme", aoa: alternating((n, q) => q.scores.join(" ")) },
     { name: "Grades",         aoa: alternating(gradeCell) },
-    { name: "Comments",       aoa: alternating((n, q) => (n && commentsByStudent[n] && commentsByStudent[n][q.title]) || "") },
+    { name: "Comments",       aoa: alternating((n, q) => (n && commentsByStudent[n] && commentsByStudent[n][qKey(q)]) || "") },
   ];
 }
 
@@ -1588,10 +1808,11 @@ function buildGradesHTML() {
     const grades = gradesByStudent[name] || {};
     const comments = commentsByStudent[name] || {};
     const feedback = (feedbackByStudent[name] || "").trim();
+    const groupTotals = computeGroupTotals(name);
 
-    const rows = scheme.map(q => {
-      const v = (typeof grades[q.title] === "number") ? grades[q.title] : q.scores[0];
-      const comment = (comments[q.title] || "").trim();
+    const qrow = (q) => {
+      const v = (typeof grades[qKey(q)] === "number") ? grades[qKey(q)] : q.scores[0];
+      const comment = (comments[qKey(q)] || "").trim();
       return (
         '<div class="qrow">' +
           '<div class="qtitle">' + htmlEscape(q.title) + '</div>' +
@@ -1599,6 +1820,26 @@ function buildGradesHTML() {
           '<div class="qpts">' + htmlEscape(fmt(v)) + ' / ' + htmlEscape(fmt(q.max)) + '</div>' +
         '</div>'
       );
+    };
+
+    // Group by group, matching the on-screen list: each group gets a header row with
+    // its subtotal. The default group ("") gets a blank-named header too, but only when
+    // it sits alongside named groups; a plain ungrouped slip stays flat.
+    const groupList = groupedScheme(scheme);
+    const rows = groupList.map(grp => {
+      let html = "";
+      if (grp.group || groupList.length > 1) {
+        const t = groupTotals[grp.group] || { sum: 0, max: 0 };
+        // The default (empty-named) group prints its header bar but no subtotal points.
+        const sub = grp.group
+          ? '<div class="qgsub">' + htmlEscape(fmt(t.sum)) + ' / ' + htmlEscape(fmt(t.max)) + '</div>'
+          : '';
+        html += '<div class="qgroup">' +
+                  '<div class="qgname">' + htmlEscape(grp.group) + '</div>' +
+                  sub +
+                '</div>';
+      }
+      return html + grp.questions.map(qrow).join("");
     }).join("");
 
     return (
@@ -1661,6 +1902,19 @@ function buildGradesHTML() {
 '    border-top: 1px solid #f3f4f6;\n' +
 '  }\n' +
 '  .qrow:first-child { border-top: 0; }\n' +
+'  .qgroup {\n' +
+'    display: flex;\n' +
+'    align-items: baseline;\n' +
+'    justify-content: space-between;\n' +
+'    gap: 12px;\n' +
+'    margin-top: 8px;\n' +
+'    padding: 5px 0 3px;\n' +
+'    border-top: 2px solid #d7dbe0;\n' +
+'  }\n' +
+'  .questions > .qgroup:first-child { border-top: 0; margin-top: 0; }\n' +
+'  .qgname { font-weight: 700; font-size: 14px; }\n' +
+'  .qgsub { font-size: 13px; font-weight: 700; color: #6b7280; white-space: nowrap; font-variant-numeric: tabular-nums; }\n' +
+'  .qgroup + .qrow { border-top: 0; }\n' +
 '  .qtitle { flex: 0 0 auto; font-weight: 600; font-size: 14px; }\n' +
 '  .qcomment {\n' +
 '    flex: 1 1 auto;\n' +
@@ -1804,20 +2058,38 @@ questionsEl.addEventListener("pointerdown", e => {
   selectOption(input);
 });
 
-// Remove or reorder a question via its row buttons (delegated so it covers re-renders).
+// Remove or reorder a question/group via its row buttons (delegated so it covers re-renders).
 questionsEl.addEventListener("click", e => {
+  const grm = e.target.closest(".qgremove"); // group remove — check first (also carries .qremove)
+  if (grm) { removeGroup(grm.dataset.group); return; }
   const rm = e.target.closest(".qremove");
-  if (rm) { removeQuestion(rm.dataset.title); return; }
+  if (rm) { removeQuestion(rm.dataset.key); return; }
+  const gmv = e.target.closest(".qgmove"); // group move — check first (also carries .qmove)
+  if (gmv) { if (!gmv.disabled) moveGroup(gmv.dataset.group, gmv.dataset.dir); return; }
   const mv = e.target.closest(".qmove");
-  if (mv && !mv.disabled) moveQuestion(mv.dataset.title, mv.dataset.dir);
+  if (mv && !mv.disabled) moveQuestion(mv.dataset.key, mv.dataset.dir);
 });
 
 // Add-question inline form.
 document.getElementById("aqAdd").addEventListener("click", addQuestion);
-["aqTitle", "aqScores"].forEach(id => {
+["aqGroup", "aqTitle", "aqScores"].forEach(id => {
   document.getElementById(id).addEventListener("keydown", e => {
     if (e.key === "Enter") { e.preventDefault(); addQuestion(); }
   });
+});
+
+// Group picker: an editable combobox (reusing the shared popup) listing the groups
+// currently in use; choosing one fills the box, typing a new name creates it on add.
+const aqGroup = document.getElementById("aqGroup");
+const aqGroupArrow = document.getElementById("aqGroupArrow");
+aqGroup._comboItems = () => questionGroups;
+aqGroup._comboSelect = (name) => { aqGroup.value = name; };
+aqGroup._comboEmpty = "—";
+aqGroup.addEventListener("focus", () => openCombo(aqGroup));
+aqGroupArrow.addEventListener("mousedown", e => {
+  e.preventDefault(); // keep focus where it is
+  (activeComboInput === aqGroup && comboPopup.classList.contains("open"))
+    ? closeCombo() : openCombo(aqGroup);
 });
 
 // Close the comment popup on outside click, Escape, grading-list scroll, or resize.
