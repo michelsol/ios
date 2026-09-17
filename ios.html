@@ -1633,12 +1633,16 @@ function loadStudent(name) {
   if (currentStudent && jumpToPage.checked && fp >= 1) goToPage(fp);
 }
 
+// Step to another student. Clamped at both ends, and a move that would land on the student
+// already shown does nothing at all — the ▲/▼ buttons are disabled there, but the
+// middle-click shortcut is not, and re-selecting would re-render and re-jump the PDF.
 function moveStudent(delta) {
   if (students.length === 0) return;
-  let idx = students.indexOf(currentStudent);
-  if (idx < 0) idx = 0;
-  idx = Math.min(students.length - 1, Math.max(0, idx + delta));
-  switchToStudent(students[idx]);
+  const idx = students.indexOf(currentStudent);
+  if (idx < 0) { switchToStudent(students[0]); return; }  // nothing selected -> the first
+  const next = Math.min(students.length - 1, Math.max(0, idx + delta));
+  if (students[next] === currentStudent) return;
+  switchToStudent(students[next]);
 }
 
 function updateNavButtons() {
@@ -2117,6 +2121,15 @@ questionsEl.addEventListener("pointerdown", e => {
   // Nothing has toggled the radio yet, so its state is still the previous one: pressing
   // the option already selected can be read as "clear this grade".
   selectOption(input, true);
+});
+
+// Middle-click inside the question list steps to the next student. Preventing the default
+// on mousedown is what suppresses the browser's autoscroll, so the press is swallowed even
+// when there is no next student to go to (see moveStudent).
+questionsEl.addEventListener("mousedown", e => {
+  if (e.button !== 1) return;
+  e.preventDefault();
+  moveStudent(1);
 });
 
 // Canceling pointerdown suppresses the compatibility mouse events but not the click that
