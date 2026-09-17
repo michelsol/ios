@@ -13,6 +13,12 @@
     --accent-hover: #1d4ed8;
     --text: #1f2937;
     --muted: #6b7280;
+    /* Grading state, used everywhere the same way: a 3px left bar plus a faint wash.
+       Amber = still to grade, green = done. */
+    --graded: #3fa663;
+    --graded-bg: #f4fbf6;
+    --ungraded: #f4c152;
+    --ungraded-bg: #fffcf2;
   }
   * { box-sizing: border-box; }
   html, body {
@@ -139,7 +145,12 @@
   #studentCombo {
     flex: 1 1 auto;
     min-width: 0;
+    border-left-width: 3px;   /* carries the current student's status; see refreshStudentStatus */
   }
+  /* The input inside is transparent, so the wrapper's wash shows through. These ID rules
+     outrank .combo:focus-within, so the status bar survives while the box is being typed in. */
+  #studentCombo.graded   { border-left-color: var(--graded);   background: var(--graded-bg); }
+  #studentCombo.ungraded { border-left-color: var(--ungraded); background: var(--ungraded-bg); }
   #firstPageInput { flex: 0 0 auto; width: 4.5em; }
   #btnSetFirstPage { display: inline-flex; align-items: center; justify-content: center; }
   #btnSetFirstPage svg { width: 16px; height: 16px; display: block; }
@@ -163,9 +174,14 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 8px 12px;
-    padding: 7px 0;
+    padding: 7px 0 7px 8px;
     border-bottom: 1px solid #eef0f3;
+    border-left: 3px solid transparent; /* reserved, so grading a row shifts nothing */
   }
+  /* Grading state of a row. Every question is one or the other, so :not() is exact and
+     no second class is needed (.ungraded is set in refreshCheckedStyles). */
+  .question.ungraded       { border-left-color: var(--ungraded); background: var(--ungraded-bg); }
+  .question:not(.ungraded) { border-left-color: var(--graded);   background: var(--graded-bg); }
   .combo {
     flex: 1 1 220px;
     min-width: 140px;
@@ -230,12 +246,17 @@
   }
   #comboPopup.open { display: block; }
   .combo-item {
-    padding: 7px 10px;
+    padding: 7px 10px 7px 7px;
+    border-left: 3px solid transparent;  /* reserved, so status bars never shift the text */
     cursor: pointer;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  /* Only the student list sets these (see studentSelect._comboItemClass); they sit above
+     the :hover rule so hovering still wins the background. */
+  .combo-item.graded   { border-left-color: var(--graded);   background: var(--graded-bg); }
+  .combo-item.ungraded { border-left-color: var(--ungraded); background: var(--ungraded-bg); }
   .combo-item:hover, .combo-item.active { background: #eaf1ff; }
   .combo-empty { padding: 7px 10px; color: var(--muted); }
   .question .qtitle {
@@ -345,7 +366,7 @@
     justify-content: space-between;
     gap: 12px;
     margin: 10px 0 2px;
-    padding-bottom: 4px;
+    padding: 0 0 4px 11px;   /* 11px = the questions' border-left + padding-left */
     border-bottom: 2px solid var(--border);
   }
   .qgroup:first-child { margin-top: 0; }
@@ -649,6 +670,7 @@ const pageCountEl   = document.getElementById("pageCount");
 const questionsEl   = document.getElementById("questions");
 const studentSelect = document.getElementById("studentSelect");
 const studentArrow  = document.getElementById("studentArrow");
+const studentCombo  = document.getElementById("studentCombo");
 const firstPageInput = document.getElementById("firstPageInput");
 const btnSetFirstPage = document.getElementById("btnSetFirstPage");
 const jumpToPage    = document.getElementById("jumpToPage");
@@ -780,15 +802,23 @@ function splitHeader(h) {
                : { group: h.slice(0, i), title: h.slice(i + QKEY_SEP.length) };
 }
 
-// A fresh grade map with each question set to its lowest score option.
-function defaultGrades(scheme) {
-  const g = {};
-  for (const q of (scheme || schemeQuestions)) g[qKey(q)] = q.scores[0];
-  return g;
+// A grade exists only when it is a real number: a question the teacher has not scored
+// yet holds no entry at all, so "not graded" stays distinguishable from "graded 0".
+function isGraded(v) { return typeof v === "number" && !isNaN(v); }
+
+// How far along a student is: "graded" when every one of their questions has a score,
+// "ungraded" when at least one is still missing, and "" when there is nothing to grade yet
+// (no student, or an empty scheme) — the colours only ever mean "work to do".
+function studentStatus(name) {
+  if (!name) return "";
+  const scheme = schemeFor(name);
+  if (scheme.length === 0) return "";
+  const grades = gradesByStudent[name] || {};
+  return scheme.every(q => isGraded(grades[qKey(q)])) ? "graded" : "ungraded";
 }
 
-// Add a question (with its score options) to one student's scheme, defaulting the
-// grade to the lowest option. No-op if that student already has this group+title.
+// Add a question (with its score options) to one student's scheme. It starts ungraded
+// (no entry). No-op if that student already has this group+title.
 function addQuestionToStudent(name, title, max, scores, group) {
   const scheme = schemeFor(name);
   const q = { title, max, scores: scores.slice(), group: group || "" };
@@ -796,7 +826,6 @@ function addQuestionToStudent(name, title, max, scores, group) {
   scheme.push(q);
   if (name) {
     if (!gradesByStudent[name]) gradesByStudent[name] = {};
-    gradesByStudent[name][qKey(q)] = scores[0];
     if (!commentsByStudent[name]) commentsByStudent[name] = {};
   }
 }
@@ -1197,9 +1226,9 @@ function renderQuestions() {
   }
 
   questionsEl.appendChild(addQuestionBar); // form sits at the bottom of the list
-  updateTotalMax();
-  // Always applies the current student — name, first page, feedback and (with an empty
-  // scheme) nothing else — so selecting a student works before any question exists.
+  // Always applies the current student — name, first page, feedback, grades and totals
+  // (with an empty scheme, just the first three) — so selecting a student works before
+  // any question exists.
   loadStudent(currentStudent);
 }
 
@@ -1227,7 +1256,10 @@ function openCombo(input) {
   } else {
     for (const s of items) {
       const item = document.createElement("div");
-      item.className = "combo-item";
+      // Optional per-item class, like the other _combo* hooks: only the student list uses
+      // it (to colour each name by grading status); every other combobox leaves it unset.
+      const cls = input._comboItemClass ? input._comboItemClass(s) : "";
+      item.className = "combo-item" + (cls ? " " + cls : "");
       item.textContent = s;
       item.title = s;
       item.addEventListener("mousedown", e => { e.preventDefault(); selectComboItem(s); });
@@ -1272,53 +1304,77 @@ function closeCombo() {
 }
 
 function onRadioChange(e) {
-  selectOption(e.target);
+  selectOption(e.target, false); // native change: the radio is already checked, never toggle
 }
 
-// Apply a radio selection: store it for the current student and refresh the UI.
-function selectOption(input) {
+// Apply a click on a score option: store it for the current student and refresh the UI.
+// With allowClear (a pointer press, handled before the browser checks the radio), pressing
+// the option already selected clears the grade instead — the question goes back to ungraded.
+function selectOption(input, allowClear) {
   if (!input) return;
-  input.checked = true;
   const key = input.dataset.key;
-  const value = parseFloat(input.value);
+  const clear = !!(allowClear && input.checked);
+  input.checked = !clear;
   if (currentStudent && gradesByStudent[currentStudent]) {
-    gradesByStudent[currentStudent][key] = value;
+    if (clear) delete gradesByStudent[currentStudent][key];
+    else gradesByStudent[currentStudent][key] = parseFloat(input.value);
   }
   refreshCheckedStyles();
+  refreshStudentStatus();
   recomputeTotal();
   recomputeSubtotals();
 }
 
-// Sync the ".checked" highlight class with the actually-selected radios.
+// Sync the ".checked" option highlight (from the radios themselves) and the ".ungraded"
+// row marker (from the stored grades, so it can never disagree with studentStatus — a
+// grade that is not among the question's current options checks no radio but is still a
+// grade). Both follow every path that changes a grade.
 function refreshCheckedStyles() {
   questionsEl.querySelectorAll(".opt").forEach(opt => {
     const input = opt.querySelector("input");
     opt.classList.toggle("checked", input.checked);
   });
+  const grades = (currentStudent && gradesByStudent[currentStudent]) || {};
+  questionsEl.querySelectorAll(".question").forEach(block => {
+    const input = block.querySelector(".opt input");
+    block.classList.toggle("ungraded", !(input && isGraded(grades[input.dataset.key])));
+  });
 }
 
-// Sum a student's points: their selected score per question, defaulting to the
-// first (lowest) option where nothing is selected. Pure — also used by the printable export.
-function computeTotal(name) {
+// Tint the student box with the current student's status, so it is visible without opening
+// the list (the list itself is coloured as it is built, see openCombo).
+function refreshStudentStatus() {
+  const status = studentStatus(currentStudent);
+  studentCombo.classList.toggle("graded", status === "graded");
+  studentCombo.classList.toggle("ungraded", status === "ungraded");
+}
+
+// A student's { sum, max } over the questions they have actually been graded on. Ungraded
+// questions count toward neither half, so the fraction is a truthful running score that
+// reaches the full max once everything is graded. Pure — also used by the printable export.
+function computeTotals(name) {
   const grades = gradesByStudent[name] || {};
-  let sum = 0;
+  const t = { sum: 0, max: 0 };
   for (const q of schemeFor(name)) {
-    const v = (typeof grades[qKey(q)] === "number") ? grades[qKey(q)] : q.scores[0];
-    if (typeof v === "number" && !isNaN(v)) sum += v;
+    const v = grades[qKey(q)];
+    if (!isGraded(v)) continue;
+    t.sum += v;
+    if (!isNaN(q.max)) t.max += q.max;
   }
-  return sum;
+  return t;
 }
 
-// Per-group { sum, max } of a student's points (sum uses selected scores, defaulting
-// to each question's lowest option). Keyed by group name ("" = default group).
+// The same { sum, max }, split per group ("" = default group). Every group in the scheme
+// gets an entry (so it still shows a subtotal) even when none of its questions are graded.
 function computeGroupTotals(name) {
   const grades = gradesByStudent[name] || {};
   const totals = {};
   for (const q of schemeFor(name)) {
     const g = q.group || "";
     const t = totals[g] || (totals[g] = { sum: 0, max: 0 });
-    const v = (typeof grades[qKey(q)] === "number") ? grades[qKey(q)] : q.scores[0];
-    if (typeof v === "number" && !isNaN(v)) t.sum += v;
+    const v = grades[qKey(q)];
+    if (!isGraded(v)) continue;
+    t.sum += v;
     if (!isNaN(q.max)) t.max += q.max;
   }
   return totals;
@@ -1333,21 +1389,12 @@ function recomputeSubtotals() {
   });
 }
 
+// Repaint the bottom bar. Both halves move as grading proceeds (the max only counts
+// graded questions), so this runs on every grade change, not just on re-render.
 function recomputeTotal() {
-  if (schemeQuestions.length === 0) {
-    totalValueEl.textContent = "0";
-    return;
-  }
-  totalValueEl.textContent = fmt(computeTotal(currentStudent));
-}
-
-function updateTotalMax() {
-  if (schemeQuestions.length === 0) {
-    totalMaxEl.textContent = " / 0";
-    return;
-  }
-  const maxSum = schemeQuestions.reduce((acc, q) => acc + (isNaN(q.max) ? 0 : q.max), 0);
-  totalMaxEl.textContent = " / " + fmt(maxSum);
+  const t = computeTotals(currentStudent);
+  totalValueEl.textContent = fmt(t.sum);
+  totalMaxEl.textContent = " / " + fmt(t.max);
 }
 
 // =====================================================================
@@ -1383,7 +1430,7 @@ function addStudent() {
   const scheme = cloneScheme(schemeFor(currentStudent));
   students.push(name);
   schemeByStudent[name] = scheme;
-  gradesByStudent[name] = scheme.length ? defaultGrades(scheme) : {};
+  gradesByStudent[name] = {};   // every question starts ungraded
   commentsByStudent[name] = {};
   feedbackByStudent[name] = "";
   const fp = parseInt(firstPageInput.value, 10) || (pageCanvases.length ? currentVisiblePage() : 0);
@@ -1542,6 +1589,9 @@ function loadWorkbook(s) {
 }
 
 // Save the radios + comments currently shown into the current student's state.
+// Nothing checked means "leave the stored grade alone", not "clear it": a grade whose
+// value is not among the question's current options has no matching radio, and clearing
+// is done explicitly in selectOption() anyway.
 function saveCurrentStudent() {
   if (!currentStudent || !gradesByStudent[currentStudent]) return;
   const grades = gradesByStudent[currentStudent];
@@ -1565,14 +1615,15 @@ function loadStudent(name) {
   const grades = (currentStudent && gradesByStudent[currentStudent]) || {};
   const comments = (currentStudent && commentsByStudent[currentStudent]) || {};
   for (const q of schemeQuestions) {
-    // Fall back to the lowest option so the radio is always visibly pre-selected.
-    const value = (typeof grades[qKey(q)] === "number") ? grades[qKey(q)] : q.scores[0];
+    // No stored grade means not graded yet: every option stays unchecked.
+    const value = grades[qKey(q)];
     const radios = questionsEl.querySelectorAll('input[name="q_' + cssEscape(qKey(q)) + '"]');
-    radios.forEach(r => { r.checked = (parseFloat(r.value) === value); });
+    radios.forEach(r => { r.checked = isGraded(value) && (parseFloat(r.value) === value); });
     const cinput = questionsEl.querySelector('.qcomment[data-key="' + cssEscape(qKey(q)) + '"]');
     if (cinput) cinput.value = comments[qKey(q)] || "";
   }
   refreshCheckedStyles();
+  refreshStudentStatus();
   recomputeTotal();
   recomputeSubtotals();
 
@@ -1711,7 +1762,8 @@ function updatePageControls() {
 //   Feedback       — [name, feedback]
 //   Grading_Scheme — one row per question: [title, "score1 score2 ..."] (the
 //                    questions and their score options; column 2 is a list string)
-//   Grades         — students × questions matrix, cell = obtained grade (number)
+//   Grades         — students × questions matrix, cell = obtained grade (number), left
+//                    blank for a question that has not been graded yet
 //   Comments       — students × questions matrix, cell = comment
 function buildWorkbook() {
   // Each student now owns its own questions, so the Grades, Comments and
@@ -1737,10 +1789,12 @@ function buildWorkbook() {
   };
 
   // Emit grades as numeric cells (not formatted strings) so they survive Excel
-  // round-trips and locale differences; blank when a question has no grade yet.
+  // round-trips and locale differences. A question that has not been graded yet writes
+  // an empty cell — that blank is what makes "ungraded" distinct from "graded 0", and
+  // loadWorkbook reads it back as no grade at all.
   const gradeCell = (n, q) => {
     const v = (n && gradesByStudent[n]) ? gradesByStudent[n][qKey(q)] : undefined;
-    return (typeof v === "number" && !isNaN(v)) ? v : "";
+    return isGraded(v) ? v : "";
   };
 
   return [
@@ -1798,24 +1852,27 @@ function htmlEscape(s) {
 
 // Build a standalone, print-ready HTML document: one bordered slip per student,
 // language-agnostic (no labels), ready to print and cut apart. Reuses
-// computeTotal() and fmt() so totals match the on-screen UI exactly.
+// computeTotals() and fmt() so totals match the on-screen UI exactly.
 function buildGradesHTML() {
   const slips = students.map(name => {
     const scheme = schemeFor(name);
-    const maxSum = scheme.reduce((acc, q) => acc + (isNaN(q.max) ? 0 : q.max), 0);
+    const total = computeTotals(name);
     const grades = gradesByStudent[name] || {};
     const comments = commentsByStudent[name] || {};
     const feedback = (feedbackByStudent[name] || "").trim();
     const groupTotals = computeGroupTotals(name);
 
     const qrow = (q) => {
-      const v = (typeof grades[qKey(q)] === "number") ? grades[qKey(q)] : q.scores[0];
+      // A question that was never graded prints an en dash instead of a score, and counts
+      // toward neither the group subtotal nor the slip total.
+      const v = grades[qKey(q)];
+      const graded = isGraded(v);
       const comment = (comments[qKey(q)] || "").trim();
       return (
-        '<div class="qrow">' +
+        '<div class="qrow' + (graded ? '' : ' ungraded') + '">' +
           '<div class="qtitle">' + htmlEscape(q.title) + '</div>' +
           (comment ? '<div class="qcomment">' + htmlEscape(comment) + '</div>' : '') +
-          '<div class="qpts">' + htmlEscape(fmt(v)) + ' / ' + htmlEscape(fmt(q.max)) + '</div>' +
+          '<div class="qpts">' + (graded ? htmlEscape(fmt(v)) : '&ndash;') + ' / ' + htmlEscape(fmt(q.max)) + '</div>' +
         '</div>'
       );
     };
@@ -1844,7 +1901,7 @@ function buildGradesHTML() {
       '<div class="slip">' +
         '<div class="head">' +
           '<div class="name">' + htmlEscape(name) + '</div>' +
-          '<div class="total">' + htmlEscape(fmt(computeTotal(name))) + ' / ' + htmlEscape(fmt(maxSum)) + '</div>' +
+          '<div class="total">' + htmlEscape(fmt(total.sum)) + ' / ' + htmlEscape(fmt(total.max)) + '</div>' +
         '</div>' +
         (feedback ? '<div class="feedback">' + htmlEscape(feedback) + '</div>' : '') +
         (rows ? '<div class="questions">' + rows + '</div>' : '') +
@@ -1922,6 +1979,7 @@ function buildGradesHTML() {
 '    white-space: pre-wrap;\n' +
 '  }\n' +
 '  .qpts { flex: 0 0 auto; margin-left: auto; font-size: 14px; white-space: nowrap; font-variant-numeric: tabular-nums; }\n' +
+'  .qrow.ungraded .qpts { color: #9ca3af; }\n' +
 '  @media print {\n' +
 '    body { margin: 0; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }\n' +
 '    @page { margin: 12mm; }\n' +
@@ -1967,6 +2025,7 @@ document.getElementById("fileGrades").addEventListener("change", e => readFile(e
 // switches to it. Typing a new name + "+" adds it (see addStudent).
 studentSelect._comboItems = () => students;
 studentSelect._comboSelect = (name) => { switchToStudent(name); };
+studentSelect._comboItemClass = studentStatus;  // green = fully graded, amber = not yet
 studentSelect._comboEmpty = "—";
 studentSelect.addEventListener("focus", () => openCombo(studentSelect));
 studentArrow.addEventListener("mousedown", e => {
@@ -2047,14 +2106,29 @@ document.getElementById("btnGradeZoomOut").addEventListener("click", () => zoomG
 
 // Select a score the instant the mouse is pressed (no waiting for the synthesized
 // "click"), so options respond with zero delay. Delegated so it covers re-renders.
+let pressedOption = null;      // the option whose press we already applied (see below)
 questionsEl.addEventListener("pointerdown", e => {
   const opt = e.target.closest(".opt");
   if (!opt) return;            // ignore presses on the scrollbar / gaps
   if (e.button !== undefined && e.button !== 0) return; // left button only
   const input = opt.querySelector("input");
   e.preventDefault();          // skip the browser's click synthesis/delay
-  selectOption(input);
+  pressedOption = opt;
+  // Nothing has toggled the radio yet, so its state is still the previous one: pressing
+  // the option already selected can be read as "clear this grade".
+  selectOption(input, true);
 });
+
+// Canceling pointerdown suppresses the compatibility mouse events but not the click that
+// follows, and that click's activation behaviour would re-check the radio we just cleared
+// (and fire "change"). Swallow exactly the click belonging to a press we already applied.
+// Keyboard activation (Space) arrives with no preceding pointerdown, so it still works.
+questionsEl.addEventListener("click", e => {
+  const opt = e.target.closest(".opt");
+  if (!opt) return;
+  if (opt === pressedOption) e.preventDefault();
+  pressedOption = null;
+}, true);
 
 // Remove or reorder a question/group via its row buttons (delegated so it covers re-renders).
 questionsEl.addEventListener("click", e => {
