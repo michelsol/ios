@@ -1144,65 +1144,63 @@ function renderQuestions() {
     // empty.innerHTML = 'No questions yet.<br>Click "Load" to open a file, or add a question below.';
     empty.innerHTML = '';
     questionsEl.appendChild(empty);
-    questionsEl.appendChild(addQuestionBar);
-    updateTotalMax();
-    recomputeTotal();
-    return;
-  }
+  } else {
+    // Render group by group. Each group gets a separator row carrying its name, a live
+    // subtotal and up/down controls. The default group ("") shows a blank-named bar too,
+    // but only when it sits alongside named groups; a plain ungrouped list stays flat.
+    const groups = groupedScheme(schemeQuestions);
+    groups.forEach((grp, gi) => {
+      if (grp.group || groups.length > 1) {
+        const sep = document.createElement("div");
+        sep.className = "qgroup";
+        const nameSpan = document.createElement("span");
+        nameSpan.className = "qgroup-name";
+        nameSpan.textContent = grp.group;
 
-  // Render group by group. Each group gets a separator row carrying its name, a live
-  // subtotal and up/down controls. The default group ("") shows a blank-named bar too,
-  // but only when it sits alongside named groups; a plain ungrouped list stays flat.
-  const groups = groupedScheme(schemeQuestions);
-  groups.forEach((grp, gi) => {
-    if (grp.group || groups.length > 1) {
-      const sep = document.createElement("div");
-      sep.className = "qgroup";
-      const nameSpan = document.createElement("span");
-      nameSpan.className = "qgroup-name";
-      nameSpan.textContent = grp.group;
+        const right = document.createElement("div");
+        right.className = "qgroup-right";
+        const subSpan = document.createElement("span");
+        subSpan.className = "qgroup-sub";
+        subSpan.dataset.group = grp.group;
+        right.appendChild(subSpan);
 
-      const right = document.createElement("div");
-      right.className = "qgroup-right";
-      const subSpan = document.createElement("span");
-      subSpan.className = "qgroup-sub";
-      subSpan.dataset.group = grp.group;
-      right.appendChild(subSpan);
+        const gmoveGroup = document.createElement("div");
+        gmoveGroup.className = "qmove-group";
+        ["up", "down"].forEach(dir => {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "qmove qgmove";
+          btn.title = "Move group " + dir;
+          btn.dataset.group = grp.group;
+          btn.dataset.dir = dir;
+          btn.disabled = dir === "up" ? (gi === 0) : (gi === groups.length - 1);
+          gmoveGroup.appendChild(btn);
+        });
+        right.appendChild(gmoveGroup);
 
-      const gmoveGroup = document.createElement("div");
-      gmoveGroup.className = "qmove-group";
-      ["up", "down"].forEach(dir => {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "qmove qgmove";
-        btn.title = "Move group " + dir;
-        btn.dataset.group = grp.group;
-        btn.dataset.dir = dir;
-        btn.disabled = dir === "up" ? (gi === 0) : (gi === groups.length - 1);
-        gmoveGroup.appendChild(btn);
+        const gremove = document.createElement("button");
+        gremove.type = "button";
+        gremove.className = "qremove qgremove";
+        gremove.title = "Remove group";
+        gremove.textContent = "✕";
+        gremove.dataset.group = grp.group;
+        right.appendChild(gremove);
+
+        sep.appendChild(nameSpan);
+        sep.appendChild(right);
+        questionsEl.appendChild(sep);
+      }
+      grp.questions.forEach((q, idx) => {
+        questionsEl.appendChild(buildQuestionBlock(q, idx === 0, idx === grp.questions.length - 1));
       });
-      right.appendChild(gmoveGroup);
-
-      const gremove = document.createElement("button");
-      gremove.type = "button";
-      gremove.className = "qremove qgremove";
-      gremove.title = "Remove group";
-      gremove.textContent = "✕";
-      gremove.dataset.group = grp.group;
-      right.appendChild(gremove);
-
-      sep.appendChild(nameSpan);
-      sep.appendChild(right);
-      questionsEl.appendChild(sep);
-    }
-    grp.questions.forEach((q, idx) => {
-      questionsEl.appendChild(buildQuestionBlock(q, idx === 0, idx === grp.questions.length - 1));
     });
-  });
+  }
 
   questionsEl.appendChild(addQuestionBar); // form sits at the bottom of the list
   updateTotalMax();
-  loadStudent(currentStudent); // apply current student's selections
+  // Always applies the current student — name, first page, feedback and (with an empty
+  // scheme) nothing else — so selecting a student works before any question exists.
+  loadStudent(currentStudent);
 }
 
 // Save a typed/selected comment for the current student and add it to the bank.
