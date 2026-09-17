@@ -2040,15 +2040,22 @@ studentArrow.addEventListener("mousedown", e => {
 document.getElementById("btnAddStudent").addEventListener("click", addStudent);
 document.getElementById("btnRemoveStudent").addEventListener("click", removeStudent);
 
-// Editing the first-page box updates the current student.
-firstPageInput.addEventListener("input", () => {
+// Store the box's value as the current student's first page.
+function storeFirstPage() {
   if (currentStudent) firstPageByStudent[currentStudent] = parseInt(firstPageInput.value, 10) || undefined;
+}
+// Editing the box (typing or its arrows) updates the current student and jumps the PDF there.
+firstPageInput.addEventListener("input", () => {
+  storeFirstPage();
+  const fp = parseInt(firstPageInput.value, 10);
+  if (fp >= 1) goToPage(fp);
 });
-// The page button copies the page currently in view into the box (persists via the handler above).
+// The page button copies the page currently in view into the box. It stores without jumping:
+// that page is already in view, and goToPage would snap its top edge to the top of the pane.
 btnSetFirstPage.addEventListener("click", () => {
   if (!pageCanvases.length) return;
   firstPageInput.value = currentVisiblePage();
-  firstPageInput.dispatchEvent(new Event("input"));
+  storeFirstPage();
 });
 // Tint the box to reflect whether selecting a student will jump the PDF.
 function updateFirstPageTint() {
