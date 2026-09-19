@@ -258,7 +258,28 @@
   .combo-item.graded   { border-left-color: var(--graded);   background: var(--graded-bg); }
   .combo-item.ungraded { border-left-color: var(--ungraded); background: var(--ungraded-bg); }
   .combo-item:hover, .combo-item.active { background: #eaf1ff; }
+  .combo-item.current { font-weight: 700; scroll-margin-top: 32px; } /* clear the sticky toolbar */
   .combo-empty { padding: 7px 10px; color: var(--muted); }
+  /* Optional toolbar at the top of the popup (only the student list sets one, to reorder
+     students). Sticky, so it stays reachable while the list scrolls. */
+  .combo-toolbar {
+    position: sticky; top: 0; z-index: 1;
+    display: flex; align-items: center; gap: 4px;
+    padding: 4px 6px;
+    background: #fff;
+    border-bottom: 1px solid var(--border);
+  }
+  .combo-toolbar .qmove { height: 22px; }
+  .combo-tool {
+    display: flex; align-items: center; justify-content: center;
+    height: 22px; min-width: 24px; padding: 0 5px;
+    border: 1px solid transparent; border-radius: 4px;
+    background: transparent; color: var(--muted);
+    font-size: 11px; font-weight: 700; line-height: 1;
+    cursor: pointer;
+  }
+  .combo-tool svg { width: 14px; height: 14px; }
+  .combo-tool:hover:not(:disabled) { background: #f0f5ff; border-color: #c7d7f5; color: var(--accent); }
   .question .qtitle {
     flex: 0 0 auto;
     font-weight: 600;
@@ -1247,6 +1268,9 @@ function onCommentChange(input) {
 function openCombo(input) {
   activeComboInput = input;
   comboPopup.innerHTML = "";
+  // Optional toolbar above the items, like the other _combo* hooks: only the student
+  // list sets it (to reorder students); every other combobox leaves it unset.
+  if (input._comboToolbar) comboPopup.appendChild(input._comboToolbar());
   const items = (input._comboItems && input._comboItems()) || [];
   if (items.length === 0) {
     const empty = document.createElement("div");
@@ -1268,6 +1292,9 @@ function openCombo(input) {
   }
   positionCombo();
   comboPopup.classList.add("open");
+  // Keep the current item in view (e.g. a student just moved past the visible edge).
+  const current = comboPopup.querySelector(".combo-item.current");
+  if (current) current.scrollIntoView({ block: "nearest" });
 }
 
 function positionCombo() {
@@ -1643,6 +1670,79 @@ function moveStudent(delta) {
   const next = Math.min(students.length - 1, Math.max(0, idx + delta));
   if (students[next] === currentStudent) return;
   switchToStudent(students[next]);
+}
+
+// ---- Reordering the student list (from the student popup's toolbar) ----
+// Every per-student map is keyed by name, so reordering only touches `students`; the
+// current student stays selected, and saves/exports follow the new order.
+
+// Move the current student one position up (-1) or down (+1) in the list.
+function moveCurrentStudent(delta) {
+  const i = students.indexOf(currentStudent);
+  const j = i + delta;
+  if (i < 0 || j < 0 || j >= students.length) return;
+  students[i] = students[j];
+  students[j] = currentStudent;
+  updateNavButtons();
+}
+
+// Sort by name, ignoring case/accents; `numeric` puts "e2" before "e10".
+function sortStudents() {
+  if (students.length < 2) return;
+  students.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base", numeric: true }));
+  updateNavButtons();
+}
+
+// Shuffle into a random order (Fisher–Yates).
+function shuffleStudents() {
+  if (students.length < 2) return;
+  for (let i = students.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = students[i];
+    students[i] = students[j];
+    students[j] = tmp;
+  }
+  updateNavButtons();
+}
+
+// Build the student popup's toolbar: move current up/down, sort A–Z, shuffle.
+function buildStudentToolbar() {
+  const bar = document.createElement("div");
+  bar.className = "combo-toolbar";
+  const idx = students.indexOf(currentStudent);
+  const add = (btn, title, disabled, action) => {
+    btn.type = "button";
+    btn.title = title;
+    btn.disabled = disabled;
+    btn.addEventListener("mousedown", e => {
+      e.preventDefault();              // keep focus in the input so the popup stays open
+      if (btn.disabled) return;
+      action();
+      openCombo(studentSelect);        // redraw the list (and this toolbar) in the new order
+    });
+    bar.appendChild(btn);
+  };
+  const move = (dir) => {
+    const btn = document.createElement("button");
+    btn.className = "qmove";
+    btn.dataset.dir = dir;
+    return btn;
+  };
+  const tool = (html) => {
+    const btn = document.createElement("button");
+    btn.className = "combo-tool";
+    btn.innerHTML = html;
+    return btn;
+  };
+  add(move("up"),   "Move current student up",   idx <= 0,                    () => moveCurrentStudent(-1));
+  add(move("down"), "Move current student down", idx < 0 || idx >= students.length - 1, () => moveCurrentStudent(1));
+  add(tool("A–Z"),  "Sort students alphabetically", students.length < 2, sortStudents);
+  add(tool('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+           'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+           '<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>' +
+           '<path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>'),
+      "Shuffle students into a random order", students.length < 2, shuffleStudents);
+  return bar;
 }
 
 function updateNavButtons() {
@@ -2029,7 +2129,10 @@ document.getElementById("fileGrades").addEventListener("change", e => readFile(e
 // switches to it. Typing a new name + "+" adds it (see addStudent).
 studentSelect._comboItems = () => students;
 studentSelect._comboSelect = (name) => { switchToStudent(name); };
-studentSelect._comboItemClass = studentStatus;  // green = fully graded, amber = not yet
+// Green = fully graded, amber = not yet; the current student is also bolded ("current").
+studentSelect._comboItemClass = (name) =>
+  studentStatus(name) + (name === currentStudent ? " current" : "");
+studentSelect._comboToolbar = buildStudentToolbar;
 studentSelect._comboEmpty = "—";
 studentSelect.addEventListener("focus", () => openCombo(studentSelect));
 studentArrow.addEventListener("mousedown", e => {
