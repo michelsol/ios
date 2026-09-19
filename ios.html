@@ -112,6 +112,19 @@
     flex-direction: column;
     background: var(--panel);
   }
+  #progress {
+    flex: 0 0 20px;
+    position: relative;
+    background: #eef0f3;
+    border-left: 1px solid var(--border);
+  }
+  #progressFill {                      /* anchored at the bottom, so it grows upward */
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    height: 0;
+    background: var(--graded);
+    transition: height 0.2s;
+  }
   #toolbar {
     flex: 0 0 auto;
     display: flex;
@@ -679,6 +692,9 @@
       </label>
     </div>
   </div>
+
+  <!-- Grading progress: graded questions over all students, filling from the bottom -->
+  <div id="progress" title="Grading progress"><div id="progressFill"></div></div>
 </div>
 
 <!-- Hidden file inputs -->
@@ -742,6 +758,8 @@ const questionsEl   = document.getElementById("questions");
 const studentSelect = document.getElementById("studentSelect");
 const studentArrow  = document.getElementById("studentArrow");
 const studentCombo  = document.getElementById("studentCombo");
+const progressEl    = document.getElementById("progress");
+const progressFill  = document.getElementById("progressFill");
 const studentGroupInput = document.getElementById("studentGroupInput");
 const studentGroupArrow = document.getElementById("studentGroupArrow");
 const firstPageInput = document.getElementById("firstPageInput");
@@ -1404,6 +1422,7 @@ function selectOption(input, allowClear) {
   }
   refreshCheckedStyles();
   refreshStudentStatus();
+  refreshProgress();
   recomputeTotal();
   recomputeSubtotals();
 }
@@ -1426,6 +1445,27 @@ function refreshCheckedStyles() {
 
 // Tint the student box with the current student's status, so it is visible without opening
 // the list (the list itself is coloured as it is built, see openCombo).
+// How much of the whole pile is done: graded questions over total questions, across every
+// student (not just the current one).
+function gradingProgress() {
+  let done = 0, total = 0;
+  for (const name of students) {
+    const grades = gradesByStudent[name] || {};
+    for (const q of schemeFor(name)) {
+      total++;
+      if (isGraded(grades[qKey(q)])) done++;
+    }
+  }
+  return { done, total };
+}
+
+// Paint the vertical progress strip (empty while there is nothing to grade).
+function refreshProgress() {
+  const { done, total } = gradingProgress();
+  progressFill.style.height = total ? (100 * done / total) + "%" : "0";
+  progressEl.title = "Grading progress: " + done + " / " + total + " graded";
+}
+
 function refreshStudentStatus() {
   const status = studentStatus(currentStudent);
   studentCombo.classList.toggle("graded", status === "graded");
@@ -1718,6 +1758,7 @@ function loadStudent(name) {
   }
   refreshCheckedStyles();
   refreshStudentStatus();
+  refreshProgress();     // also covers add/remove of a student or question, and .ods loads
   recomputeTotal();
   recomputeSubtotals();
 
