@@ -17,6 +17,7 @@
        Amber = still to grade, green = done. */
     --graded: #3fa663;
     --graded-bg: #f4fbf6;
+    --graded-fill: rgba(63, 166, 99, 0.25);   /* progress fill; translucent, so text stays legible */
     --ungraded: #f4c152;
     --ungraded-bg: #fffcf2;
   }
@@ -159,12 +160,14 @@
   #studentCombo {
     flex: 1 1 auto;
     min-width: 0;
+    position: relative;       /* carries #studentFill, the current student's progress */
     border-left-width: 3px;   /* carries the current student's status; see refreshStudentStatus */
   }
   /* The input inside is transparent, so the wrapper's wash shows through. These ID rules
      outrank .combo:focus-within, so the status bar survives while the box is being typed in. */
   #studentCombo.graded   { border-left-color: var(--graded);   background: var(--graded-bg); }
   #studentCombo.ungraded { border-left-color: var(--ungraded); background: var(--ungraded-bg); }
+  #studentCombo .qcomment, #studentCombo .combo-arrow { position: relative; }  /* above the fill */
   #studentGroupCombo { flex: 0 1 8em; min-width: 5em; }
   /* Add/remove student, stacked vertically to take about one combo's height. */
   .nav-stack { flex: 0 0 auto; display: flex; flex-direction: column; gap: 2px; }
@@ -268,6 +271,7 @@
   }
   #comboPopup.open { display: block; }
   .combo-item {
+    position: relative;                  /* carries .combo-fill */
     padding: 7px 10px 7px 7px;
     border-left: 3px solid transparent;  /* reserved, so status bars never shift the text */
     cursor: pointer;
@@ -281,6 +285,9 @@
   .combo-item.ungraded { border-left-color: var(--ungraded); background: var(--ungraded-bg); }
   .combo-item:hover, .combo-item.active { background: #eaf1ff; }
   .combo-note { margin-left: 8px; color: var(--muted); font-weight: 400; } /* e.g. a student's group */
+  /* Progress fill: how much of this student is graded. Grows from the left, under the text. */
+  .combo-fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--graded-fill); }
+  .combo-label, .combo-note { position: relative; }   /* above the fill */
   .combo-item.current { font-weight: 700; scroll-margin-top: 32px; } /* clear the sticky toolbar */
   /* Optional toolbar at the top of the popup (only the student list sets one, to reorder
      students). Sticky, so it stays reachable while the list scrolls. */
@@ -615,6 +622,7 @@
         </svg>
       </label>
       <div class="combo" id="studentCombo" title="Student's name">
+        <div id="studentFill" class="combo-fill"></div>
         <input type="text" id="studentSelect" class="qcomment" autocomplete="off" placeholder="…">
         <button type="button" id="studentArrow" class="combo-arrow" tabindex="-1">&#9662;</button>
       </div>
@@ -758,6 +766,7 @@ const questionsEl   = document.getElementById("questions");
 const studentSelect = document.getElementById("studentSelect");
 const studentArrow  = document.getElementById("studentArrow");
 const studentCombo  = document.getElementById("studentCombo");
+const studentFill   = document.getElementById("studentFill");
 const progressEl    = document.getElementById("progress");
 const progressFill  = document.getElementById("progressFill");
 const studentGroupInput = document.getElementById("studentGroupInput");
@@ -1350,8 +1359,20 @@ function openCombo(input) {
     // it (to colour each name by grading status); every other combobox leaves it unset.
     const cls = input._comboItemClass ? input._comboItemClass(s) : "";
     item.className = "combo-item" + (cls ? " " + cls : "");
-    item.textContent = s;
     item.title = s;
+    // Optional progress fill behind the text (the student list shows each student's
+    // grading progress); every other combobox leaves the hook unset.
+    const fraction = input._comboItemFill ? input._comboItemFill(s) : null;
+    if (fraction != null) {
+      const bar = document.createElement("div");
+      bar.className = "combo-fill";
+      bar.style.width = (100 * fraction) + "%";
+      item.appendChild(bar);
+    }
+    const label = document.createElement("span");
+    label.className = "combo-label";
+    label.textContent = s;
+    item.appendChild(label);
     // Optional greyed note after the text (the student list shows each student's group).
     const note = input._comboItemNote ? input._comboItemNote(s) : "";
     if (note) {
@@ -1445,16 +1466,29 @@ function refreshCheckedStyles() {
 
 // Tint the student box with the current student's status, so it is visible without opening
 // the list (the list itself is coloured as it is built, see openCombo).
+// How far one student is: graded questions over their question count.
+function studentProgress(name) {
+  const grades = gradesByStudent[name] || {};
+  const scheme = schemeFor(name);
+  let done = 0;
+  for (const q of scheme) if (isGraded(grades[qKey(q)])) done++;
+  return { done, total: scheme.length };
+}
+
+// The same as a 0–1 fraction (0 when there is nothing to grade), for the progress fills.
+function studentFraction(name) {
+  const { done, total } = studentProgress(name);
+  return total ? done / total : 0;
+}
+
 // How much of the whole pile is done: graded questions over total questions, across every
 // student (not just the current one).
 function gradingProgress() {
   let done = 0, total = 0;
   for (const name of students) {
-    const grades = gradesByStudent[name] || {};
-    for (const q of schemeFor(name)) {
-      total++;
-      if (isGraded(grades[qKey(q)])) done++;
-    }
+    const p = studentProgress(name);
+    done += p.done;
+    total += p.total;
   }
   return { done, total };
 }
@@ -1470,6 +1504,7 @@ function refreshStudentStatus() {
   const status = studentStatus(currentStudent);
   studentCombo.classList.toggle("graded", status === "graded");
   studentCombo.classList.toggle("ungraded", status === "ungraded");
+  studentFill.style.width = (100 * studentFraction(currentStudent)) + "%";
 }
 
 // A student's { sum, max } over the questions they have actually been graded on. Ungraded
@@ -2404,6 +2439,7 @@ studentSelect._comboItemClass = (name) =>
   studentStatus(name) + (name === currentStudent ? " current" : "");
 studentSelect._comboToolbar = buildStudentToolbar;
 studentSelect._comboItemNote = (name) => groupByStudent[name] || "";  // greyed group after the name
+studentSelect._comboItemFill = studentFraction;                       // background = grading progress
 studentSelect.addEventListener("focus", () => openCombo(studentSelect));
 studentArrow.addEventListener("mousedown", e => {
   e.preventDefault(); // keep focus where it is
