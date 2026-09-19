@@ -490,7 +490,7 @@
   <div id="left">
     <div id="pdfBar">
       <button id="btnAssignment" class="secondary" aria-label="Open PDF"
-        title="Open a list of assignments as a single PDF file">
+        title="Open one or more PDF files (several are merged in file-name order)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
@@ -682,7 +682,7 @@
 </div>
 
 <!-- Hidden file inputs -->
-<input type="file" id="fileAssignment" accept="application/pdf" style="display:none">
+<input type="file" id="fileAssignment" accept="application/pdf" multiple style="display:none">
 <input type="file" id="fileGrades" accept=".ods,application/vnd.oasis.opendocument.spreadsheet" style="display:none">
 
 <!-- Shared suggestion popup for every question's comment combobox -->
@@ -2317,12 +2317,41 @@ function readFile(input, asArrayBuffer, callback) {
   input.value = ""; // allow re-importing the same file
 }
 
+// Open the PDF(s) picked in the file dialog. Several files are merged (in file-name order)
+// into one document with pdf-lib, which the rest of the app then sees as a single PDF.
+async function openPdfFiles(input) {
+  const files = Array.from(input.files || []).sort((a, b) => compareNames(a.name, b.name));
+  input.value = ""; // allow re-opening the same selection
+  if (files.length === 0) return;
+  if (files.length === 1) {
+    renderPdf(await files[0].arrayBuffer(), files[0].name);
+    return;
+  }
+  if (!window.PDFLib) {
+    alert("PDF writing library failed to load. Check your internet connection (pdf-lib is loaded from a CDN).");
+    return;
+  }
+  let current = "";
+  try {
+    const merged = await PDFLib.PDFDocument.create();
+    for (const f of files) {
+      current = f.name;
+      const src = await PDFLib.PDFDocument.load(await f.arrayBuffer(), { ignoreEncryption: true });
+      for (const p of await merged.copyPages(src, src.getPageIndices())) merged.addPage(p);
+    }
+    const bytes = await merged.save();
+    renderPdf(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), "merged.pdf");
+  } catch (err) {
+    alert('Could not merge the PDFs ("' + current + '"): ' + (err && err.message ? err.message : err));
+  }
+}
+
 document.getElementById("btnAssignment").addEventListener("click", () => document.getElementById("fileAssignment").click());
 document.getElementById("btnImportGrades").addEventListener("click", () => document.getElementById("fileGrades").click());
 document.getElementById("btnSave").addEventListener("click", saveGrades);
 document.getElementById("btnExport").addEventListener("click", exportGrades);
 
-document.getElementById("fileAssignment").addEventListener("change", e => readFile(e.target, true, renderPdf));
+document.getElementById("fileAssignment").addEventListener("change", e => openPdfFiles(e.target));
 document.getElementById("fileGrades").addEventListener("change", e => readFile(e.target, true, loadGradesWorkbook));
 
 // Student picker is an editable combobox: the popup lists existing students; choosing one
