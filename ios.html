@@ -151,6 +151,14 @@
      outrank .combo:focus-within, so the status bar survives while the box is being typed in. */
   #studentCombo.graded   { border-left-color: var(--graded);   background: var(--graded-bg); }
   #studentCombo.ungraded { border-left-color: var(--ungraded); background: var(--ungraded-bg); }
+  #studentGroupCombo { flex: 0 1 8em; min-width: 5em; }
+  /* Add/remove student, stacked vertically to take about one combo's height. */
+  .nav-stack { flex: 0 0 auto; display: flex; flex-direction: column; gap: 2px; }
+  .nav-stack button.nav {
+    padding: 0; width: 26px; height: 16px;
+    font-size: 13px; line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+  }
   #firstPageInput { flex: 0 0 auto; width: 4.5em; }
   #btnSetFirstPage { display: inline-flex; align-items: center; justify-content: center; }
   #btnSetFirstPage svg { width: 16px; height: 16px; display: block; }
@@ -258,6 +266,7 @@
   .combo-item.graded   { border-left-color: var(--graded);   background: var(--graded-bg); }
   .combo-item.ungraded { border-left-color: var(--ungraded); background: var(--ungraded-bg); }
   .combo-item:hover, .combo-item.active { background: #eaf1ff; }
+  .combo-note { margin-left: 8px; color: var(--muted); font-weight: 400; } /* e.g. a student's group */
   .combo-item.current { font-weight: 700; scroll-margin-top: 32px; } /* clear the sticky toolbar */
   /* Optional toolbar at the top of the popup (only the student list sets one, to reorder
      students). Sticky, so it stays reachable while the list scrolls. */
@@ -591,8 +600,23 @@
         <input type="text" id="studentSelect" class="qcomment" autocomplete="off" placeholder="…">
         <button type="button" id="studentArrow" class="combo-arrow" tabindex="-1">&#9662;</button>
       </div>
-      <button id="btnAddStudent" class="nav" title="Add a student">+</button>
-      <button id="btnRemoveStudent" class="nav" title="Remove current student">&#8722;</button>
+      <div class="nav-stack">
+        <button id="btnAddStudent" class="nav" title="Add a student">+</button>
+        <button id="btnRemoveStudent" class="nav" title="Remove current student">&#8722;</button>
+      </div>
+      <label for="studentGroupInput" aria-label="Group">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="9" cy="7" r="4"/>
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+        </svg>
+      </label>
+      <div class="combo" id="studentGroupCombo" title="Student's group">
+        <input type="text" id="studentGroupInput" class="qcomment" autocomplete="off" placeholder="…">
+        <button type="button" id="studentGroupArrow" class="combo-arrow" tabindex="-1">&#9662;</button>
+      </div>
     </div>
     <div id="questions">
       <!-- <div id="questionsEmpty">No questions yet.<br>Click "Load" to open a file, or add a question below.</div> -->
@@ -690,6 +714,7 @@ let gradesByStudent = {};      // { name: { title: selectedScore } }
 let commentsByStudent = {};    // { name: { title: commentString } }
 let feedbackByStudent = {};    // { name: globalFeedbackString }
 let firstPageByStudent = {};   // { name: 1-based PDF page where this student's work starts }
+let groupByStudent = {};       // { name: student group } (absent = no group; unrelated to question groups)
 let currentStudent = "";       // current selected student name ("" if none)
 
 const commentBank = [];        // unique comments ever used (suggestion list)
@@ -710,6 +735,8 @@ const questionsEl   = document.getElementById("questions");
 const studentSelect = document.getElementById("studentSelect");
 const studentArrow  = document.getElementById("studentArrow");
 const studentCombo  = document.getElementById("studentCombo");
+const studentGroupInput = document.getElementById("studentGroupInput");
+const studentGroupArrow = document.getElementById("studentGroupArrow");
 const firstPageInput = document.getElementById("firstPageInput");
 const btnSetFirstPage = document.getElementById("btnSetFirstPage");
 const totalValueEl  = document.getElementById("totalValue");
@@ -1300,6 +1327,15 @@ function openCombo(input) {
     item.className = "combo-item" + (cls ? " " + cls : "");
     item.textContent = s;
     item.title = s;
+    // Optional greyed note after the text (the student list shows each student's group).
+    const note = input._comboItemNote ? input._comboItemNote(s) : "";
+    if (note) {
+      const span = document.createElement("span");
+      span.className = "combo-note";
+      span.textContent = note;
+      item.appendChild(span);
+      item.title = s + " · " + note;
+    }
     item.addEventListener("mousedown", e => { e.preventDefault(); selectComboItem(s); });
     comboPopup.appendChild(item);
   }
@@ -1475,6 +1511,8 @@ function addStudent() {
   feedbackByStudent[name] = "";
   const fp = parseInt(firstPageInput.value, 10) || (pageCanvases.length ? currentVisiblePage() : 0);
   if (fp >= 1) firstPageByStudent[name] = fp;
+  const group = studentGroupInput.value.trim();  // the group box's value (often the previous student's)
+  if (group) groupByStudent[name] = group;
   studentSelect.value = name;
   switchToStudent(name);
 }
@@ -1492,6 +1530,7 @@ function removeStudent() {
   delete commentsByStudent[currentStudent];
   delete feedbackByStudent[currentStudent];
   delete firstPageByStudent[currentStudent];
+  delete groupByStudent[currentStudent];
   students.splice(idx, 1);
   recomputeGroups();          // a group only this student used is now gone
   if (students.length === 0) {
@@ -1513,7 +1552,7 @@ function zoomGrade(factor) {
   document.getElementById("gradeZoomLabel").textContent = Math.round(gradeZoom * 100) + "%";
 }
 
-// Read an .ods save file, collect its 7 sheets by name (as arrays of rows),
+// Read an .ods save file, collect its sheets by name (as arrays of rows),
 // then hand them to loadWorkbook.
 function loadGradesWorkbook(buf) {
   if (!window.XLSX) {
@@ -1541,6 +1580,7 @@ function loadGradesWorkbook(buf) {
     students:      sheet("Students"),
     pageInfo:      sheet("Page info"),
     feedback:      sheet("Feedback"),
+    studentGroups: sheet("Student_groups"),   // absent in older files -> no groups
     gradingScheme: sheet("Grading_Scheme"),
     grades:        sheet("Grades"),
     comments:      sheet("Comments"),
@@ -1562,11 +1602,13 @@ function loadWorkbook(s) {
   commentsByStudent = {};
   feedbackByStudent = {};
   firstPageByStudent = {};
+  groupByStudent = {};
   commentBank.length = 0;
   commentBankSet.clear();
 
   const pageMap = twoColMap(s.pageInfo);
   const fbMap = twoColMap(s.feedback);
+  const grpMap = twoColMap(s.studentGroups);
 
   // Build one student's scheme from the Grading_Scheme headers (falling back to Grades):
   // each header is a question key that splits into group/title (a header without the
@@ -1607,6 +1649,7 @@ function loadWorkbook(s) {
     feedbackByStudent[name] = fbMap[name] || "";
     const fp = parseInt(pageMap[name], 10);
     if (fp >= 1) firstPageByStudent[name] = fp;
+    if (grpMap[name]) groupByStudent[name] = grpMap[name];
     const gradeVals = gr.valuesByName[name] || {};
     const commentVals = cm.valuesByName[name] || {};
     for (const q of scheme) {
@@ -1649,7 +1692,11 @@ function saveCurrentStudent() {
 // Apply a student's stored selections to the radios and update the total.
 function loadStudent(name) {
   currentStudent = name || "";
-  if (currentStudent) studentSelect.value = currentStudent;
+  if (currentStudent) {
+    studentSelect.value = currentStudent;
+    // Only with a student: an empty list keeps what was typed, for the next "+".
+    studentGroupInput.value = groupByStudent[currentStudent] || "";
+  }
 
   globalFeedback.value = (currentStudent && feedbackByStudent[currentStudent]) || "";
   const grades = (currentStudent && gradesByStudent[currentStudent]) || {};
@@ -1699,11 +1746,47 @@ function moveCurrentStudent(delta) {
   updateNavButtons();
 }
 
-// Sort by name, ignoring case/accents; `numeric` puts "e2" before "e10".
+// Compare two names ignoring case/accents; `numeric` puts "e2" before "e10".
+function compareNames(a, b) {
+  return a.localeCompare(b, undefined, { sensitivity: "base", numeric: true });
+}
+
+// Sort by name.
 function sortStudents() {
   if (students.length < 2) return;
-  students.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base", numeric: true }));
+  students.sort(compareNames);
   updateNavButtons();
+}
+
+// Distinct student groups, in order of first appearance in the list ("" = no group, never listed).
+function studentGroups() {
+  const seen = [];
+  for (const n of students) {
+    const g = groupByStudent[n];
+    if (g && seen.indexOf(g) < 0) seen.push(g);
+  }
+  return seen;
+}
+
+// Gather students by group: groups in alphabetical order, students without a group last.
+// Array sort is stable, so the order inside each group is kept (students aren't sorted).
+function sortStudentsByGroup() {
+  if (students.length < 2) return;
+  students.sort((a, b) => {
+    const ga = groupByStudent[a] || "", gb = groupByStudent[b] || "";
+    if (!ga || !gb) return (ga ? 0 : 1) - (gb ? 0 : 1);   // no group sorts last
+    return compareNames(ga, gb);
+  });
+  updateNavButtons();
+}
+
+// Store the group box's value as the current student's group. Skipped while the name box
+// holds a different (new) name: the group box is then preparing the group for "+".
+function assignStudentGroup() {
+  if (!currentStudent || studentSelect.value.trim() !== currentStudent) return;
+  const g = studentGroupInput.value.trim();
+  if (g) groupByStudent[currentStudent] = g;
+  else delete groupByStudent[currentStudent];
 }
 
 // Shuffle into a random order (Fisher–Yates).
@@ -1718,7 +1801,7 @@ function shuffleStudents() {
   updateNavButtons();
 }
 
-// Build the student popup's toolbar: move current up/down, sort A–Z, shuffle.
+// Build the student popup's toolbar: move current up/down, sort A–Z, shuffle, sort by group.
 function buildStudentToolbar() {
   const bar = document.createElement("div");
   bar.className = "combo-toolbar";
@@ -1755,6 +1838,11 @@ function buildStudentToolbar() {
            '<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>' +
            '<path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>'),
       "Shuffle students into a random order", students.length < 2, shuffleStudents);
+  add(tool('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+           'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+           '<circle cx="9" cy="7" r="4"/><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>' +
+           '<path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>'),
+      "Sort students by group", students.length < 2, sortStudentsByGroup);
   return bar;
 }
 
@@ -1925,6 +2013,7 @@ function currentVisiblePage() {
 //   Students       — one student name per row
 //   Page info      — [name, first_page]
 //   Feedback       — [name, feedback]
+//   Student_groups — [name, group] (group blank when none)
 //   Grading_Scheme — one row per question: [title, "score1 score2 ..."] (the
 //                    questions and their score options; column 2 is a list string)
 //   Grades         — students × questions matrix, cell = obtained grade (number), left
@@ -1966,6 +2055,7 @@ function buildWorkbook() {
     { name: "Students",       aoa: students.map(n => [n]) },
     { name: "Page info",      aoa: students.map(n => [n, firstPageByStudent[n] || ""]) },
     { name: "Feedback",       aoa: students.map(n => [n, feedbackByStudent[n] || ""]) },
+    { name: "Student_groups", aoa: students.map(n => [n, groupByStudent[n] || ""]) },
     // Per student: [name, ...titles] then ["", ..."score1 score2 ..." per question].
     { name: "Grading_Scheme", aoa: alternating((n, q) => q.scores.join(" ")) },
     { name: "Grades",         aoa: alternating(gradeCell) },
@@ -2194,11 +2284,23 @@ studentSelect._comboSelect = (name) => { switchToStudent(name); };
 studentSelect._comboItemClass = (name) =>
   studentStatus(name) + (name === currentStudent ? " current" : "");
 studentSelect._comboToolbar = buildStudentToolbar;
+studentSelect._comboItemNote = (name) => groupByStudent[name] || "";  // greyed group after the name
 studentSelect.addEventListener("focus", () => openCombo(studentSelect));
 studentArrow.addEventListener("mousedown", e => {
   e.preventDefault(); // keep focus where it is
   (activeComboInput === studentSelect && comboPopup.classList.contains("open"))
     ? closeCombo() : openCombo(studentSelect);
+});
+// Student group: an editable combobox suggesting the groups in use. Editing it sets the
+// current student's group live; it also gives new students their group (see addStudent).
+studentGroupInput._comboItems = studentGroups;
+studentGroupInput._comboSelect = (group) => { studentGroupInput.value = group; assignStudentGroup(); };
+studentGroupInput.addEventListener("focus", () => openCombo(studentGroupInput));
+studentGroupInput.addEventListener("input", assignStudentGroup);
+studentGroupArrow.addEventListener("mousedown", e => {
+  e.preventDefault(); // keep focus where it is
+  (activeComboInput === studentGroupInput && comboPopup.classList.contains("open"))
+    ? closeCombo() : openCombo(studentGroupInput);
 });
 document.getElementById("btnAddStudent").addEventListener("click", addStudent);
 document.getElementById("btnRemoveStudent").addEventListener("click", removeStudent);
@@ -2286,14 +2388,16 @@ questionsEl.addEventListener("pointerdown", e => {
   selectOption(input, true);
 });
 
-// Middle-click inside the question list steps to the next student. Preventing the default
-// on mousedown is what suppresses the browser's autoscroll, so the press is swallowed even
-// when there is no next student to go to (see moveStudent).
-questionsEl.addEventListener("mousedown", e => {
+// Middle-click inside the question list or the student bar steps to the next student.
+// Preventing the default on mousedown is what suppresses the browser's autoscroll, so the
+// press is swallowed even when there is no next student to go to (see moveStudent).
+function nextStudentOnMiddleClick(e) {
   if (e.button !== 1) return;
   e.preventDefault();
   moveStudent(1);
-});
+}
+questionsEl.addEventListener("mousedown", nextStudentOnMiddleClick);
+document.getElementById("studentBar").addEventListener("mousedown", nextStudentOnMiddleClick);
 
 // Canceling pointerdown suppresses the compatibility mouse events but not the click that
 // follows, and that click's activation behaviour would re-check the radio we just cleared
