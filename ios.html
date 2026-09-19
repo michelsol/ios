@@ -487,7 +487,6 @@
           <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
         </svg>
       </button>
-      <button id="btnPagePrev" class="nav" title="Previous page">&#9650;</button>
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
            stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
            aria-label="Page" style="flex:0 0 auto">
@@ -496,7 +495,6 @@
       </svg>
       <input type="number" id="pageInput" min="1" value="1" disabled>
       <span class="pglabel" id="pageCount">/ 0</span>
-      <button id="btnPageNext" class="nav" title="Next page">&#9660;</button>
       <span class="zoomctl" style="margin-left:14px;">
         <svg class="lens" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -1784,7 +1782,6 @@ async function renderPdf(arrayBuffer) {
     pageInput.value = 1;
     pageCountEl.textContent = "/ 0";
     document.getElementById("pdfZoomLabel").textContent = "100%";
-    updatePageControls();
     const msg = document.createElement("div");
     msg.id = "pdfEmpty";
     msg.textContent = "Could not render this PDF: " + (err && err.message ? err.message : err);
@@ -1834,7 +1831,6 @@ function goToPage(n) {
   const canvas = pageCanvases[n - 1];
   pdfPane.scrollTop = canvas.offsetTop - pdfPane.offsetTop;
   pageInput.value = n;
-  updatePageControls();
 }
 
 // Work out which page is currently most in view (from scroll position).
@@ -1847,12 +1843,6 @@ function currentVisiblePage() {
     if (mid >= top && mid < bottom) return i + 1;
   }
   return pdfPane.scrollTop <= 0 ? 1 : pageCanvases.length;
-}
-
-function updatePageControls() {
-  const n = pageCanvases.length ? parseInt(pageInput.value, 10) || 1 : 0;
-  document.getElementById("btnPagePrev").disabled = (pageCanvases.length === 0 || n <= 1);
-  document.getElementById("btnPageNext").disabled = (pageCanvases.length === 0 || n >= pageCanvases.length);
 }
 
 // =====================================================================
@@ -2300,9 +2290,7 @@ document.addEventListener("keydown", e => {
 questionsEl.addEventListener("scroll", () => { if (comboPopup.classList.contains("open")) closeCombo(); });
 window.addEventListener("resize", () => { if (comboPopup.classList.contains("open")) closeCombo(); });
 
-// Page navigation controls.
-document.getElementById("btnPagePrev").addEventListener("click", () => goToPage((parseInt(pageInput.value, 10) || 1) - 1));
-document.getElementById("btnPageNext").addEventListener("click", () => goToPage((parseInt(pageInput.value, 10) || 1) + 1));
+// Page navigation: typing a page number (or using the spinner) jumps there.
 pageInput.addEventListener("change", () => goToPage(parseInt(pageInput.value, 10) || 1));
 
 // Keep the page number in sync as the PDF is scrolled.
@@ -2313,10 +2301,7 @@ pdfPane.addEventListener("scroll", () => {
     pageSyncRaf = null;
     if (pageCanvases.length === 0) return;
     const n = currentVisiblePage();
-    if (parseInt(pageInput.value, 10) !== n) {
-      pageInput.value = n;
-      updatePageControls();
-    }
+    if (parseInt(pageInput.value, 10) !== n) pageInput.value = n;
   });
 });
 
@@ -2360,7 +2345,6 @@ divider.addEventListener("pointerup", endDrag);
 divider.addEventListener("pointercancel", endDrag);
 
 updateNavButtons();
-updatePageControls();
 </script>
 </body>
 </html>
