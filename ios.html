@@ -2199,10 +2199,13 @@ function buildGradesHTML() {
       '<div class="slip">' +
         '<div class="head">' +
           '<div class="name">' + htmlEscape(name) + '</div>' +
+        '</div>' +
+        (rows ? '<div class="questions">' + rows + '</div>' : '') +
+        // Last row: feedback on the left, total on the right (total alone if no feedback).
+        '<div class="sumrow">' +
+          (feedback ? '<div class="feedback">' + htmlEscape(feedback) + '</div>' : '') +
           '<div class="total">' + htmlEscape(fmt(total.sum)) + ' / ' + htmlEscape(fmt(total.max)) + '</div>' +
         '</div>' +
-        (feedback ? '<div class="feedback">' + htmlEscape(feedback) + '</div>' : '') +
-        (rows ? '<div class="questions">' + rows + '</div>' : '') +
       '</div>'
     );
   }).join("");
@@ -2238,9 +2241,12 @@ function buildGradesHTML() {
 '    padding-bottom: 8px;\n' +
 '  }\n' +
 '  .name { font-size: 18px; font-weight: 700; }\n' +
-'  .total { font-size: 18px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }\n' +
+'  .sumrow { display: flex; align-items: baseline; gap: 12px; margin-top: 10px; }\n' +
+'  .questions + .sumrow { border-top: 2px solid #d7dbe0; padding-top: 8px; }\n' +
+'  .total { margin-left: auto; font-size: 18px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }\n' +
 '  .feedback {\n' +
-'    margin-top: 10px;\n' +
+'    flex: 1 1 auto;\n' +
+'    min-width: 0;\n' +
 '    font-size: 14px;\n' +
 '    font-style: italic;\n' +
 '    color: #374151;\n' +
