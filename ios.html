@@ -93,6 +93,7 @@
   #pdfBar button:disabled { opacity: 0.4; }
   #btnAssignment, #btnSavePdf, #btnRotatePage { display: inline-flex; align-items: center; justify-content: center; }
   #btnAssignment svg, #btnSavePdf svg, #btnRotatePage svg { width: 18px; height: 18px; display: block; }
+  #btnAssignment, #btnSavePdf { padding-left: 34px; padding-right: 34px; }  /* ~2x wide, easier to hit */
   #onlyPdfLabel {
     font-size: 13px;
     color: var(--muted);
@@ -496,7 +497,7 @@
         </svg>
       </button>
       <button id="btnSavePdf" class="secondary" aria-label="Save PDF"
-        title="Save the PDF with rotated pages" disabled>
+        title="Save the PDF with rotated and reordered pages" disabled>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
@@ -520,6 +521,10 @@
           <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
         </svg>
       </button>
+      <div class="nav-stack">
+        <button id="btnPageUp" class="nav" title="Move current page up" disabled>&#9650;</button>
+        <button id="btnPageDown" class="nav" title="Move current page down" disabled>&#9660;</button>
+      </div>
       <span class="zoomctl" style="margin-left:14px;">
         <svg class="lens" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -731,6 +736,8 @@ const onlyScrollPdf = document.getElementById("onlyScrollPdf");
 const pageCountEl   = document.getElementById("pageCount");
 const btnSavePdf    = document.getElementById("btnSavePdf");
 const btnRotatePage = document.getElementById("btnRotatePage");
+const btnPageUp     = document.getElementById("btnPageUp");
+const btnPageDown   = document.getElementById("btnPageDown");
 const questionsEl   = document.getElementById("questions");
 const studentSelect = document.getElementById("studentSelect");
 const studentArrow  = document.getElementById("studentArrow");
@@ -1869,7 +1876,7 @@ const PDF_BASE_SCALE = 1.5; // scale at 100%
 let renderToken = 0;        // guards against overlapping re-renders
 let pdfBytes = null;        // the original file (Uint8Array), rewritten by savePdf
 let pdfFileName = "";       // the opened file's name, reused when saving
-let pageRotation = {};      // { 1-based page: extra clockwise degrees (0/90/180/270) }
+let pageRotation = {};      // { original 1-based page: extra clockwise degrees (0/90/180/270) }
 
 async function renderPdf(arrayBuffer, name) {
   if (!window.pdfjsLib) {
@@ -1883,6 +1890,7 @@ async function renderPdf(arrayBuffer, name) {
   try {
     currentPdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
     pdfZoom = 1.0;
+    pageCanvases = [];          // a new file starts in its natural page order (see drawPages)
     await drawPages(1);
   } catch (err) {
     currentPdfDoc = null;
@@ -1892,6 +1900,8 @@ async function renderPdf(arrayBuffer, name) {
     pageInput.disabled = true;
     btnSavePdf.disabled = true;
     btnRotatePage.disabled = true;
+    btnPageUp.disabled = true;
+    btnPageDown.disabled = true;
     pageInput.value = 1;
     pageCountEl.textContent = "/ 0";
     document.getElementById("pdfZoomLabel").textContent = "100%";
@@ -1904,24 +1914,35 @@ async function renderPdf(arrayBuffer, name) {
 
 // Render all pages of the current document at the current zoom, then scroll to
 // targetPage. Re-entrant: a newer call cancels an in-flight one via renderToken.
+// Each canvas carries its original page number (dataset.page), so `pageCanvases` is also
+// the page order (see movePage); a re-render (zoom) keeps that order.
 async function drawPages(targetPage) {
   if (!currentPdfDoc) return;
   const token = ++renderToken;
+  const order = pageCanvases.length
+    ? pageCanvases.map(c => +c.dataset.page)
+    : Array.from({ length: currentPdfDoc.numPages }, (_, i) => i + 1);
+  // Create every canvas up front, so `pageCanvases` is complete (and the order readable)
+  // even while the pages below are still rendering.
   pdfPane.innerHTML = "";
-  pageCanvases = [];
-  const scale = PDF_BASE_SCALE * pdfZoom;
-  for (let pageNum = 1; pageNum <= currentPdfDoc.numPages; pageNum++) {
-    const page = await currentPdfDoc.getPage(pageNum);
-    if (token !== renderToken) return; // a newer render superseded this one
+  pageCanvases = order.map(n => {
     const canvas = document.createElement("canvas");
+    canvas.dataset.page = n;
     pdfPane.appendChild(canvas);
-    pageCanvases.push(canvas);
+    return canvas;
+  });
+  const scale = PDF_BASE_SCALE * pdfZoom;
+  for (const canvas of pageCanvases.slice()) {   // a copy: a move mid-render can't skip a page
+    const page = await currentPdfDoc.getPage(+canvas.dataset.page);
+    if (token !== renderToken) return; // a newer render superseded this one
     await renderPageInto(canvas, page, scale);
     if (token !== renderToken) return;
   }
   pageInput.disabled = false;
   btnSavePdf.disabled = false;
   btnRotatePage.disabled = false;
+  btnPageUp.disabled = false;
+  btnPageDown.disabled = false;
   pageInput.max = currentPdfDoc.numPages;
   pageCountEl.textContent = "/ " + currentPdfDoc.numPages;
   document.getElementById("pdfZoomLabel").textContent = Math.round(pdfZoom * 100) + "%";
@@ -1945,14 +1966,30 @@ async function rotateCurrentPage() {
   const n = currentVisiblePage();
   const canvas = pageCanvases[n - 1];
   if (!canvas) return;
-  pageRotation[n] = ((pageRotation[n] || 0) + 90) % 360;
-  const page = await currentPdfDoc.getPage(n);
+  const orig = +canvas.dataset.page;   // rotations are keyed by original page number
+  pageRotation[orig] = ((pageRotation[orig] || 0) + 90) % 360;
+  const page = await currentPdfDoc.getPage(orig);
   await renderPageInto(canvas, page, PDF_BASE_SCALE * pdfZoom);
   goToPage(n);
 }
 
-// Download the PDF with the user's rotations applied. pdf-lib only rewrites each page's
-// /Rotate entry, so the page contents are kept as-is (no re-rendering, no quality loss).
+// Swap the page in view with the previous (-1) or next (+1) one. Only the canvases move
+// (no re-render); student first pages are positions and are deliberately left as-is.
+function movePage(delta) {
+  const n = currentVisiblePage();
+  const m = n + delta;
+  if (pageCanvases.length === 0 || m < 1 || m > pageCanvases.length) return;
+  const tmp = pageCanvases[n - 1];
+  pageCanvases[n - 1] = pageCanvases[m - 1];
+  pageCanvases[m - 1] = tmp;
+  const i = Math.min(n, m) - 1;        // put the (new) earlier canvas back before the later one
+  pdfPane.insertBefore(pageCanvases[i], pageCanvases[i + 1]);
+  goToPage(m);
+}
+
+// Download the PDF with the user's rotations and page order applied. pdf-lib only rewrites
+// each page's /Rotate entry and the page list, so the page contents are kept as-is (no
+// re-rendering, no quality loss).
 async function savePdf() {
   if (!pdfBytes) {
     alert("No PDF loaded.");
@@ -1969,6 +2006,12 @@ async function savePdf() {
       const p = pages[n - 1];
       if (!p || !extra) continue;
       p.setRotation(PDFLib.degrees(((p.getRotation().angle + extra) % 360 + 360) % 360));
+    }
+    // Then the order shown on screen (each canvas holds its original page number).
+    const order = pageCanvases.map(c => +c.dataset.page);
+    if (order.some((n, i) => n !== i + 1)) {
+      for (let i = pages.length - 1; i >= 0; i--) doc.removePage(i);
+      for (const n of order) doc.addPage(pages[n - 1]);
     }
     downloadFile(pdfFileName, await doc.save(), "application/pdf");
   } catch (err) {
@@ -2458,6 +2501,8 @@ window.addEventListener("resize", () => { if (comboPopup.classList.contains("ope
 
 btnSavePdf.addEventListener("click", savePdf);
 btnRotatePage.addEventListener("click", rotateCurrentPage);
+btnPageUp.addEventListener("click", () => movePage(-1));
+btnPageDown.addEventListener("click", () => movePage(1));
 
 // Page navigation: typing a page number (or using the spinner) jumps there.
 pageInput.addEventListener("change", () => goToPage(parseInt(pageInput.value, 10) || 1));
