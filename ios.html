@@ -259,7 +259,6 @@
   .combo-item.ungraded { border-left-color: var(--ungraded); background: var(--ungraded-bg); }
   .combo-item:hover, .combo-item.active { background: #eaf1ff; }
   .combo-item.current { font-weight: 700; scroll-margin-top: 32px; } /* clear the sticky toolbar */
-  .combo-empty { padding: 7px 10px; color: var(--muted); }
   /* Optional toolbar at the top of the popup (only the student list sets one, to reorder
      students). Sticky, so it stays reachable while the list scrolls. */
   .combo-toolbar {
@@ -1286,29 +1285,25 @@ function onCommentChange(input) {
 // ---- Comment suggestion combobox (custom; shows the full bank, unfiltered) ----
 
 function openCombo(input) {
+  const items = (input._comboItems && input._comboItems()) || [];
+  // Nothing to suggest: don't unfold at all (and fold any popup already open, e.g. after
+  // its last suggestion was removed).
+  if (items.length === 0) { closeCombo(); return; }
   activeComboInput = input;
   comboPopup.innerHTML = "";
   // Optional toolbar above the items, like the other _combo* hooks: only the student
   // list sets it (to reorder students); every other combobox leaves it unset.
   if (input._comboToolbar) comboPopup.appendChild(input._comboToolbar());
-  const items = (input._comboItems && input._comboItems()) || [];
-  if (items.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "combo-empty";
-    empty.textContent = input._comboEmpty || "—";
-    comboPopup.appendChild(empty);
-  } else {
-    for (const s of items) {
-      const item = document.createElement("div");
-      // Optional per-item class, like the other _combo* hooks: only the student list uses
-      // it (to colour each name by grading status); every other combobox leaves it unset.
-      const cls = input._comboItemClass ? input._comboItemClass(s) : "";
-      item.className = "combo-item" + (cls ? " " + cls : "");
-      item.textContent = s;
-      item.title = s;
-      item.addEventListener("mousedown", e => { e.preventDefault(); selectComboItem(s); });
-      comboPopup.appendChild(item);
-    }
+  for (const s of items) {
+    const item = document.createElement("div");
+    // Optional per-item class, like the other _combo* hooks: only the student list uses
+    // it (to colour each name by grading status); every other combobox leaves it unset.
+    const cls = input._comboItemClass ? input._comboItemClass(s) : "";
+    item.className = "combo-item" + (cls ? " " + cls : "");
+    item.textContent = s;
+    item.title = s;
+    item.addEventListener("mousedown", e => { e.preventDefault(); selectComboItem(s); });
+    comboPopup.appendChild(item);
   }
   positionCombo();
   comboPopup.classList.add("open");
@@ -2201,7 +2196,6 @@ studentSelect._comboSelect = (name) => { switchToStudent(name); };
 studentSelect._comboItemClass = (name) =>
   studentStatus(name) + (name === currentStudent ? " current" : "");
 studentSelect._comboToolbar = buildStudentToolbar;
-studentSelect._comboEmpty = "—";
 studentSelect.addEventListener("focus", () => openCombo(studentSelect));
 studentArrow.addEventListener("mousedown", e => {
   e.preventDefault(); // keep focus where it is
@@ -2256,7 +2250,6 @@ globalFeedback._comboSelect = (val) => {
   globalFeedback.value = val;
   if (currentStudent) feedbackByStudent[currentStudent] = val;
 };
-globalFeedback._comboEmpty = "—";
 globalFeedback.addEventListener("focus", () => openCombo(globalFeedback));
 feedbackArrow.addEventListener("mousedown", e => {
   e.preventDefault();
@@ -2347,7 +2340,6 @@ const aqGroup = document.getElementById("aqGroup");
 const aqGroupArrow = document.getElementById("aqGroupArrow");
 aqGroup._comboItems = () => questionGroups;
 aqGroup._comboSelect = (name) => { aqGroup.value = name; };
-aqGroup._comboEmpty = "—";
 aqGroup.addEventListener("focus", () => openCombo(aqGroup));
 aqGroupArrow.addEventListener("mousedown", e => {
   e.preventDefault(); // keep focus where it is
