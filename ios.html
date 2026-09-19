@@ -579,7 +579,6 @@
           <polyline points="14 2 14 8 20 8"/>
         </svg>
       </button>
-      <label id="jumpLabel" title="Jump to student's first page on selection"><input type="checkbox" id="jumpToPage" checked></label>
       <input type="number" id="firstPageInput" min="1" title="First page number for this student">
       <label for="studentSelect" aria-label="Student">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -713,7 +712,6 @@ const studentArrow  = document.getElementById("studentArrow");
 const studentCombo  = document.getElementById("studentCombo");
 const firstPageInput = document.getElementById("firstPageInput");
 const btnSetFirstPage = document.getElementById("btnSetFirstPage");
-const jumpToPage    = document.getElementById("jumpToPage");
 const totalValueEl  = document.getElementById("totalValue");
 const totalMaxEl    = document.getElementById("totalMax");
 const comboPopup    = document.getElementById("comboPopup");
@@ -1669,10 +1667,10 @@ function loadStudent(name) {
   recomputeTotal();
   recomputeSubtotals();
 
-  // Reflect this student's first PDF page, and optionally jump the viewer there.
+  // Reflect this student's first PDF page, and jump the viewer there.
   const fp = currentStudent ? parseInt(firstPageByStudent[currentStudent], 10) : NaN;
   firstPageInput.value = fp >= 1 ? fp : "";
-  if (currentStudent && jumpToPage.checked && fp >= 1) goToPage(fp);
+  if (currentStudent && fp >= 1) goToPage(fp);
 }
 
 // Step to another student. Clamped at both ends, and a move that would land on the student
@@ -2222,12 +2220,6 @@ btnSetFirstPage.addEventListener("click", () => {
   firstPageInput.value = currentVisiblePage();
   storeFirstPage();
 });
-// Tint the box to reflect whether selecting a student will jump the PDF.
-function updateFirstPageTint() {
-  firstPageInput.style.background = jumpToPage.checked ? "#e6f4ea" : "#fde8e8";
-}
-jumpToPage.addEventListener("change", updateFirstPageTint);
-updateFirstPageTint(); // initial paint (Jump is checked by default → green)
 // While the combobox holds a name that isn't a student yet (one being created),
 // pre-fill the first-page box with the page currently in view.
 studentSelect.addEventListener("input", () => {
