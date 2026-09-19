@@ -91,8 +91,8 @@
     border-radius: 6px;
   }
   #pdfBar button:disabled { opacity: 0.4; }
-  #btnAssignment { display: inline-flex; align-items: center; justify-content: center; }
-  #btnAssignment svg { width: 18px; height: 18px; display: block; }
+  #btnAssignment, #btnSavePdf, #btnRotatePage { display: inline-flex; align-items: center; justify-content: center; }
+  #btnAssignment svg, #btnSavePdf svg, #btnRotatePage svg { width: 18px; height: 18px; display: block; }
   #onlyPdfLabel {
     font-size: 13px;
     color: var(--muted);
@@ -487,6 +487,15 @@
           <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
         </svg>
       </button>
+      <button id="btnSavePdf" class="secondary" aria-label="Save PDF"
+        title="Save the PDF with rotated pages" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+          <polyline points="17 21 17 13 7 13 7 21"/>
+          <polyline points="7 3 7 8 15 8"/>
+        </svg>
+      </button>
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
            stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
            aria-label="Page" style="flex:0 0 auto">
@@ -495,6 +504,14 @@
       </svg>
       <input type="number" id="pageInput" min="1" value="1" disabled>
       <span class="pglabel" id="pageCount">/ 0</span>
+      <button id="btnRotatePage" class="secondary" aria-label="Rotate page"
+        title="Rotate current page 90° clockwise" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="23 4 23 10 17 10"/>
+          <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+        </svg>
+      </button>
       <span class="zoomctl" style="margin-left:14px;">
         <svg class="lens" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -649,6 +666,9 @@
      required (it bundles the ODS codecs; the "mini" build does not). To run fully
      offline, replace this URL with a local copy of xlsx.full.min.js. -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- pdf-lib (CDN), used to write the PDF back with rotated pages (pdf.js only reads).
+     To run fully offline, replace this URL with a local copy of pdf-lib.min.js. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script>
 "use strict";
 
@@ -686,6 +706,8 @@ const pdfEmpty      = document.getElementById("pdfEmpty");
 const pageInput     = document.getElementById("pageInput");
 const onlyScrollPdf = document.getElementById("onlyScrollPdf");
 const pageCountEl   = document.getElementById("pageCount");
+const btnSavePdf    = document.getElementById("btnSavePdf");
+const btnRotatePage = document.getElementById("btnRotatePage");
 const questionsEl   = document.getElementById("questions");
 const studentSelect = document.getElementById("studentSelect");
 const studentArrow  = document.getElementById("studentArrow");
@@ -1764,21 +1786,31 @@ let currentPdfDoc = null;   // the loaded PDF.js document
 let pdfZoom = 1.0;          // user zoom multiplier
 const PDF_BASE_SCALE = 1.5; // scale at 100%
 let renderToken = 0;        // guards against overlapping re-renders
+let pdfBytes = null;        // the original file (Uint8Array), rewritten by savePdf
+let pdfFileName = "";       // the opened file's name, reused when saving
+let pageRotation = {};      // { 1-based page: extra clockwise degrees (0/90/180/270) }
 
-async function renderPdf(arrayBuffer) {
+async function renderPdf(arrayBuffer, name) {
   if (!window.pdfjsLib) {
     alert("PDF library failed to load. Check your internet connection (PDF.js is loaded from a CDN).");
     return;
   }
+  // Keep a copy for saving: pdf.js transfers (detaches) the buffer it is given.
+  pdfBytes = new Uint8Array(arrayBuffer.slice(0));
+  pdfFileName = name || "document.pdf";
+  pageRotation = {};
   try {
     currentPdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
     pdfZoom = 1.0;
     await drawPages(1);
   } catch (err) {
     currentPdfDoc = null;
+    pdfBytes = null;
     pageCanvases = [];
     pdfPane.innerHTML = "";
     pageInput.disabled = true;
+    btnSavePdf.disabled = true;
+    btnRotatePage.disabled = true;
     pageInput.value = 1;
     pageCountEl.textContent = "/ 0";
     document.getElementById("pdfZoomLabel").textContent = "100%";
@@ -1800,21 +1832,67 @@ async function drawPages(targetPage) {
   for (let pageNum = 1; pageNum <= currentPdfDoc.numPages; pageNum++) {
     const page = await currentPdfDoc.getPage(pageNum);
     if (token !== renderToken) return; // a newer render superseded this one
-    const viewport = page.getViewport({ scale });
     const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
     pdfPane.appendChild(canvas);
     pageCanvases.push(canvas);
-    await page.render({ canvasContext: ctx, viewport }).promise;
+    await renderPageInto(canvas, page, scale);
     if (token !== renderToken) return;
   }
   pageInput.disabled = false;
+  btnSavePdf.disabled = false;
+  btnRotatePage.disabled = false;
   pageInput.max = currentPdfDoc.numPages;
   pageCountEl.textContent = "/ " + currentPdfDoc.numPages;
   document.getElementById("pdfZoomLabel").textContent = Math.round(pdfZoom * 100) + "%";
   goToPage(targetPage || 1);
+}
+
+// Size `canvas` for one PDF.js page and render it, applying the page's own rotation plus
+// any extra rotation the user added (pageRotation).
+async function renderPageInto(canvas, page, scale) {
+  const rotation = (page.rotate + (pageRotation[page.pageNumber] || 0)) % 360;
+  const viewport = page.getViewport({ scale, rotation });
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+  await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+}
+
+// Rotate the page in view 90° clockwise, re-rendering only that page. It is then
+// scrolled to the top, since its height (and so the layout below it) may have changed.
+async function rotateCurrentPage() {
+  if (!currentPdfDoc || pageCanvases.length === 0) return;
+  const n = currentVisiblePage();
+  const canvas = pageCanvases[n - 1];
+  if (!canvas) return;
+  pageRotation[n] = ((pageRotation[n] || 0) + 90) % 360;
+  const page = await currentPdfDoc.getPage(n);
+  await renderPageInto(canvas, page, PDF_BASE_SCALE * pdfZoom);
+  goToPage(n);
+}
+
+// Download the PDF with the user's rotations applied. pdf-lib only rewrites each page's
+// /Rotate entry, so the page contents are kept as-is (no re-rendering, no quality loss).
+async function savePdf() {
+  if (!pdfBytes) {
+    alert("No PDF loaded.");
+    return;
+  }
+  if (!window.PDFLib) {
+    alert("PDF writing library failed to load. Check your internet connection (pdf-lib is loaded from a CDN).");
+    return;
+  }
+  try {
+    const doc = await PDFLib.PDFDocument.load(pdfBytes, { ignoreEncryption: true });
+    const pages = doc.getPages();
+    for (const [n, extra] of Object.entries(pageRotation)) {
+      const p = pages[n - 1];
+      if (!p || !extra) continue;
+      p.setRotation(PDFLib.degrees(((p.getRotation().angle + extra) % 360 + 360) % 360));
+    }
+    downloadFile(pdfFileName, await doc.save(), "application/pdf");
+  } catch (err) {
+    alert("Could not save the PDF: " + (err && err.message ? err.message : err));
+  }
 }
 
 function zoomPdf(factor) {
@@ -1902,9 +1980,9 @@ function buildWorkbook() {
   ];
 }
 
-// Trigger a browser download of `text` as `filename` with the given MIME type.
-function downloadFile(filename, text, mime) {
-  const blob = new Blob([text], { type: mime });
+// Trigger a browser download of `data` (a string or bytes) as `filename` with the given MIME type.
+function downloadFile(filename, data, mime) {
+  const blob = new Blob([data], { type: mime });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -2101,7 +2179,7 @@ function readFile(input, asArrayBuffer, callback) {
   const file = input.files && input.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = () => callback(reader.result);
+  reader.onload = () => callback(reader.result, file.name);
   if (asArrayBuffer) reader.readAsArrayBuffer(file);
   else reader.readAsText(file);
   input.value = ""; // allow re-importing the same file
@@ -2289,6 +2367,9 @@ document.addEventListener("keydown", e => {
 });
 questionsEl.addEventListener("scroll", () => { if (comboPopup.classList.contains("open")) closeCombo(); });
 window.addEventListener("resize", () => { if (comboPopup.classList.contains("open")) closeCombo(); });
+
+btnSavePdf.addEventListener("click", savePdf);
+btnRotatePage.addEventListener("click", rotateCurrentPage);
 
 // Page navigation: typing a page number (or using the spinner) jumps there.
 pageInput.addEventListener("change", () => goToPage(parseInt(pageInput.value, 10) || 1));
