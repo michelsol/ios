@@ -811,7 +811,7 @@ function cell(row, i) {
   return String((row && row[i] != null) ? row[i] : "").trim();
 }
 
-// Build a { col0: col1 } map from a 2-column sheet (e.g. "Page info", "Feedback").
+// Build a { col0: col1 } map from a 2-column sheet (e.g. "Pages", "Feedback").
 // Rows with a blank first cell are skipped; the last entry wins on duplicates.
 function twoColMap(rows) {
   const map = {};
@@ -1563,6 +1563,14 @@ function computeTotals(name) {
   return t;
 }
 
+// The full max of a student's scheme: every question counts, graded or not. This is the
+// "max possible" written to the Total sheet, unlike computeTotals' running max.
+function schemeMax(name) {
+  let max = 0;
+  for (const q of schemeFor(name)) if (!isNaN(q.max)) max += q.max;
+  return max;
+}
+
 // The same { sum, max }, split per group ("" = default group). Every group in the scheme
 // gets an entry (so it still shows a subtotal) even when none of its questions are graded.
 function computeGroupTotals(name) {
@@ -1691,7 +1699,7 @@ function loadGradesWorkbook(buf) {
   }
   // Look sheets up by a normalized name (ignore spaces/underscores and case).
   // Excel rewrites multi-word ODS table names with underscores on save
-  // (e.g. "Page info" -> "Page_info"), so an exact match would miss them.
+  // (e.g. "Student groups" -> "Student_groups"), so an exact match would miss them.
   const norm = n => String(n).toLowerCase().replace(/[\s_]+/g, "");
   const sheet = (name) => {
     const key = norm(name);
@@ -1700,8 +1708,7 @@ function loadGradesWorkbook(buf) {
     return ws ? XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) : [];
   };
   loadWorkbook({
-    students:      sheet("Students"),
-    pageInfo:      sheet("Page info"),
+    pages:         sheet("Pages"),            // the student list and their first pages
     feedback:      sheet("Feedback"),
     studentGroups: sheet("Student_groups"),   // absent in older files -> no groups
     gradingScheme: sheet("Grading_Scheme"),
@@ -1729,7 +1736,7 @@ function loadWorkbook(s) {
   commentBank.length = 0;
   commentBankSet.clear();
 
-  const pageMap = twoColMap(s.pageInfo);
+  const pageMap = twoColMap(s.pages);
   const fbMap = twoColMap(s.feedback);
   const grpMap = twoColMap(s.studentGroups);
 
@@ -1754,10 +1761,10 @@ function loadWorkbook(s) {
     });
   };
 
-  // Student order/list comes from the Students sheet; include any extra students
+  // Student order/list comes from the Pages sheet; include any extra students
   // that only appear in the data sheets (so nothing silently drops).
   const names = [];
-  for (const row of s.students) {
+  for (const row of s.pages) {
     const name = cell(row, 0);
     if (name && names.indexOf(name) < 0) names.push(name);
   }
@@ -2170,8 +2177,7 @@ function currentVisiblePage() {
 
 // Build the save sheets, each as { name, aoa } (an array of cell-arrays).
 // Returned in display order so the workbook tabs come out in that order.
-//   Students       — one student name per row
-//   Page info      — [name, first_page]
+//   Pages          — [name, first_page] (also the student list and its order)
 //   Feedback       — [name, feedback]
 //   Student_groups — [name, group] (group blank when none)
 //   Grading_Scheme — one row per question: [title, "score1 score2 ..."] (the
@@ -2179,6 +2185,7 @@ function currentVisiblePage() {
 //   Grades         — students × questions matrix, cell = obtained grade (number), left
 //                    blank for a question that has not been graded yet
 //   Comments       — students × questions matrix, cell = comment
+//   Total          — [name, total, max_possible] (written for convenience, never read back)
 function buildWorkbook() {
   // Each student now owns its own questions, so the Grades, Comments and
   // Grading_Scheme sheets use a per-student "alternating" layout: a header row
@@ -2212,14 +2219,15 @@ function buildWorkbook() {
   };
 
   return [
-    { name: "Students",       aoa: students.map(n => [n]) },
-    { name: "Page info",      aoa: students.map(n => [n, firstPageByStudent[n] || ""]) },
+    { name: "Pages",          aoa: students.map(n => [n, firstPageByStudent[n] || ""]) },
     { name: "Feedback",       aoa: students.map(n => [n, feedbackByStudent[n] || ""]) },
     { name: "Student_groups", aoa: students.map(n => [n, groupByStudent[n] || ""]) },
     // Per student: [name, ...titles] then ["", ..."score1 score2 ..." per question].
     { name: "Grading_Scheme", aoa: alternating((n, q) => q.scores.join(" ")) },
     { name: "Grades",         aoa: alternating(gradeCell) },
     { name: "Comments",       aoa: alternating((n, q) => (n && commentsByStudent[n] && commentsByStudent[n][qKey(q)]) || "") },
+    // Convenience only: the running total next to the full max of every question.
+    { name: "Total",          aoa: students.map(n => [n, computeTotals(n).sum, schemeMax(n)]) },
   ];
 }
 
