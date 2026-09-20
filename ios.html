@@ -268,6 +268,9 @@
   #comboPopup.open { display: block; }
   .combo-item {
     position: relative;                  /* carries .combo-fill */
+    display: flex;
+    align-items: center;
+    gap: 6px;
     padding: 7px 10px 7px 7px;
     border-left: 3px solid transparent;  /* reserved, so status bars never shift the text */
     cursor: pointer;
@@ -284,6 +287,21 @@
   /* Progress fill: how much of this student is graded. Grows from the left, under the text. */
   .combo-fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--graded-fill); }
   .combo-label, .combo-note { position: relative; }   /* above the fill */
+  .combo-label { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
+  /* Per-row controls (the comment list uses them to reorder and remove suggestions). */
+  .combo-actions { position: relative; flex: 0 0 auto; display: flex; align-items: center; gap: 2px; }
+  .combo-act {
+    display: flex; align-items: center; justify-content: center;
+    width: 18px; height: 18px; padding: 0;
+    border: 1px solid transparent; border-radius: 4px;
+    background: transparent; color: var(--muted);
+    font-size: 13px; line-height: 1;
+    cursor: pointer;
+  }
+  .combo-act.arrow { font-size: 9px; }
+  .combo-act:disabled { opacity: 0.35; cursor: default; }
+  .combo-act:hover:not(:disabled) { background: #f0f5ff; border-color: #c7d7f5; color: var(--accent); }
+  .combo-act.del:hover:not(:disabled) { background: #fdecec; border-color: #f1c6c6; color: #b91c1c; }
   .combo-item.current { font-weight: 700; scroll-margin-top: 32px; } /* clear the sticky toolbar */
   /* Optional toolbar at the top of the popup (only the student list sets one, to reorder
      students). Sticky, so it stays reachable while the list scrolls. */
@@ -322,12 +340,14 @@
     flex-wrap: wrap;
     gap: 8px;
   }
+  /* A key you press: raised when unpicked, pushed in when picked. The radio itself is
+     hidden (it still holds the state), which is what makes the row narrower. */
   .opt {
+    position: relative;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 7px;
-    min-width: 56px;
+    min-width: 48px;
     min-height: 40px;
     padding: 8px 14px;
     border: 1px solid var(--border);
@@ -335,20 +355,24 @@
     cursor: pointer;
     font-size: 15px;
     user-select: none;
-    background: #fafbfc;
+    background: linear-gradient(#fff, #f3f5f8);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.12);
   }
-  .opt:hover { border-color: var(--accent); background: #f0f5ff; }
-  .opt input {
-    cursor: pointer;
+  .opt:hover { border-color: var(--accent); background: linear-gradient(#fff, #eef4ff); }
+  .opt input {                           /* hidden, but still focusable and still the state */
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
     margin: 0;
-    width: 18px;
-    height: 18px;
-    transform: scale(1.15);
   }
+  .opt:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
   .opt.checked {
     border-color: var(--accent);
-    background: #eaf1ff;
+    background: #e4edff;
     font-weight: 600;
+    box-shadow: inset 0 2px 3px rgba(0,0,0,0.18);
+    transform: translateY(1px);
   }
   .qremove {
     flex: 0 0 auto;
@@ -845,6 +869,15 @@ function bankRemove(bank, set, s) {
   if (i >= 0) bank.splice(i, 1);
 }
 
+// Swap a suggestion with its neighbour, to reorder the list. No-op at either end.
+function bankMove(bank, s, delta) {
+  const i = bank.indexOf((s || "").trim());
+  const j = i + delta;
+  if (i < 0 || j < 0 || j >= bank.length) return;
+  bank[i] = bank[j];
+  bank[j] = s;
+}
+
 // Format a number for display/output without float noise (e.g. 0.7500001 -> "0.75").
 function fmt(n) {
   if (n === "" || n === null || n === undefined) return "";
@@ -1184,18 +1217,20 @@ function buildQuestionBlock(q, disableUp, disableDown) {
     comment.autocomplete = "off";
     comment._comboItems = () => commentBank;
     comment._comboSelect = (val) => { comment.value = val; onCommentChange(comment); };
+    // Each suggestion carries its own reorder/remove buttons (they used to sit in the row).
+    comment._comboItemButtons = (s) => {
+      const i = commentBank.indexOf(s);
+      return [
+        { label: "▲", cls: "arrow", title: "Move this suggestion up",
+          disabled: i <= 0, action: () => bankMove(commentBank, s, -1) },
+        { label: "▼", cls: "arrow", title: "Move this suggestion down",
+          disabled: i < 0 || i >= commentBank.length - 1, action: () => bankMove(commentBank, s, 1) },
+        { label: "−", cls: "del", title: "Remove this comment from the suggestion list",
+          action: () => bankRemove(commentBank, commentBankSet, s) },
+      ];
+    };
     comment.addEventListener("change", () => onCommentChange(comment));
     comment.addEventListener("focus", () => openCombo(comment));
-    const arrow = document.createElement("button");
-    arrow.type = "button";
-    arrow.className = "combo-arrow";
-    arrow.tabIndex = -1;
-    arrow.textContent = "▾";
-    arrow.addEventListener("mousedown", e => {
-      e.preventDefault(); // keep focus where it is
-      (activeComboInput === comment && comboPopup.classList.contains("open"))
-        ? closeCombo() : openCombo(comment);
-    });
     const addBtn = document.createElement("button");
     addBtn.type = "button";
     addBtn.className = "combo-add";
@@ -1207,21 +1242,8 @@ function buildQuestionBlock(q, disableUp, disableDown) {
       bankAdd(commentBank, commentBankSet, comment.value);
       if (activeComboInput === comment && comboPopup.classList.contains("open")) openCombo(comment);
     });
-    const delBtn = document.createElement("button");
-    delBtn.type = "button";
-    delBtn.className = "combo-del";
-    delBtn.tabIndex = -1;
-    delBtn.title = "Remove this comment from the suggestion list";
-    delBtn.textContent = "−"; // U+2212 minus, matching the rest of the UI
-    delBtn.addEventListener("mousedown", e => {
-      e.preventDefault();
-      bankRemove(commentBank, commentBankSet, comment.value);
-      if (activeComboInput === comment && comboPopup.classList.contains("open")) openCombo(comment);
-    });
     combo.appendChild(comment);
-    combo.appendChild(addBtn);
-    combo.appendChild(delBtn);
-    combo.appendChild(arrow);
+    combo.appendChild(addBtn);   // removing and reordering happen inside the dropdown
     block.appendChild(combo);
 
     const qmoveGroup = document.createElement("div");
@@ -1375,6 +1397,31 @@ function openCombo(input) {
       span.textContent = note;
       item.appendChild(span);
       item.title = s + " · " + note;
+    }
+    // Optional per-row buttons (the comment list reorders and removes suggestions with
+    // them). They act on their own row, so they must not also select it.
+    const buttons = (input._comboItemButtons && input._comboItemButtons(s)) || [];
+    if (buttons.length) {
+      const actions = document.createElement("span");
+      actions.className = "combo-actions";
+      for (const b of buttons) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "combo-act" + (b.cls ? " " + b.cls : "");
+        btn.tabIndex = -1;
+        btn.title = b.title || "";
+        btn.textContent = b.label;
+        btn.disabled = !!b.disabled;
+        btn.addEventListener("mousedown", e => {
+          e.preventDefault();
+          e.stopPropagation();          // don't let the row select this suggestion
+          if (btn.disabled) return;
+          b.action();
+          openCombo(input);             // redraw the list in place
+        });
+        actions.appendChild(btn);
+      }
+      item.appendChild(actions);
     }
     item.addEventListener("mousedown", e => { e.preventDefault(); selectComboItem(s); });
     comboPopup.appendChild(item);
