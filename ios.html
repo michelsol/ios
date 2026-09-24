@@ -762,6 +762,7 @@ let gradesByStudent = {};      // { name: { title: selectedScore } }
 let commentsByStudent = {};    // { name: { title: commentString } }
 let feedbackByStudent = {};    // { name: globalFeedbackString }
 let firstPageByStudent = {};   // { name: 1-based PDF page where this student's work starts }
+let scrollPosByStudent = {};   // { name: fractional page at the top of the PDF pane when last left (e.g. 3.25) }
 let groupByStudent = {};       // { name: student group } (absent = no group; unrelated to question groups)
 let currentStudent = "";       // current selected student name ("" if none)
 
@@ -1691,6 +1692,7 @@ function removeStudent() {
   delete commentsByStudent[currentStudent];
   delete feedbackByStudent[currentStudent];
   delete firstPageByStudent[currentStudent];
+  delete scrollPosByStudent[currentStudent];
   delete groupByStudent[currentStudent];
   students.splice(idx, 1);
   recomputeGroups();          // a group only this student used is now gone
@@ -1739,6 +1741,7 @@ function loadGradesWorkbook(buf) {
   };
   loadWorkbook({
     pages:         sheet("Pages"),            // the student list and their first pages
+    scrollPositions: sheet("Scroll_Positions"), // absent in older files -> first pages
     feedback:      sheet("Feedback"),
     studentGroups: sheet("Student_groups"),   // absent in older files -> no groups
     gradingScheme: sheet("Grading_Scheme"),
@@ -1762,11 +1765,13 @@ function loadWorkbook(s) {
   commentsByStudent = {};
   feedbackByStudent = {};
   firstPageByStudent = {};
+  scrollPosByStudent = {};
   groupByStudent = {};
   commentBank.length = 0;
   commentBankSet.clear();
 
   const pageMap = twoColMap(s.pages);
+  const scrollMap = twoColMap(s.scrollPositions || []);
   const fbMap = twoColMap(s.feedback);
   const grpMap = twoColMap(s.studentGroups);
 
@@ -1809,6 +1814,8 @@ function loadWorkbook(s) {
     feedbackByStudent[name] = fbMap[name] || "";
     const fp = parseInt(pageMap[name], 10);
     if (fp >= 1) firstPageByStudent[name] = fp;
+    const pos = parseFloat(scrollMap[name]);
+    if (pos >= 1) scrollPosByStudent[name] = pos;
     if (grpMap[name]) groupByStudent[name] = grpMap[name];
     const gradeVals = gr.valuesByName[name] || {};
     const commentVals = cm.valuesByName[name] || {};
@@ -1847,6 +1854,8 @@ function saveCurrentStudent() {
     comments[input.dataset.key] = input.value.trim();
   });
   feedbackByStudent[currentStudent] = globalFeedback.value;
+  // Remember where the PDF was left for this student (not mid-render: offsets aren't final).
+  if (pageCanvases.length && !pdfRendering) scrollPosByStudent[currentStudent] = pdfScrollPos();
 }
 
 // Apply a student's stored selections to the radios and update the total.
@@ -1875,10 +1884,16 @@ function loadStudent(name) {
   recomputeTotal();
   recomputeSubtotals();
 
-  // Reflect this student's first PDF page, and jump the viewer there.
+  // Reflect this student's first PDF page, and bring the viewer back to where it was left
+  // for them (their first page the first time). Mid-render the page offsets aren't final,
+  // so the render scrolls there once it is done.
   const fp = currentStudent ? parseInt(firstPageByStudent[currentStudent], 10) : NaN;
   firstPageInput.value = fp >= 1 ? fp : "";
-  if (currentStudent && fp >= 1) goToPage(fp);
+  const target = studentScrollTarget();
+  if (target) {
+    if (pdfRendering) pendingPdfPos = target;
+    else scrollPdfTo(target);
+  }
 }
 
 // Step to another student. Clamped at both ends, and a move that would land on the student
@@ -2046,6 +2061,8 @@ let currentPdfDoc = null;   // the loaded PDF.js document
 let pdfZoom = 1.0;          // user zoom multiplier
 const PDF_BASE_SCALE = 1.5; // scale at 100%
 let renderToken = 0;        // guards against overlapping re-renders
+let pdfRendering = false;   // a drawPages is in flight: page offsets aren't final yet
+let pendingPdfPos = 1;      // where that render scrolls once done (see scrollPdfTo)
 let pdfBytes = null;        // the original file (Uint8Array), rewritten by savePdf
 let pdfFileName = "";       // the opened file's name, reused when saving
 let pageRotation = {};      // { original 1-based page: extra clockwise degrees (0/90/180/270) }
@@ -2063,8 +2080,9 @@ async function renderPdf(arrayBuffer, name) {
     currentPdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
     pdfZoom = 1.0;
     pageCanvases = [];          // a new file starts in its natural page order (see drawPages)
-    await drawPages(1);
+    await drawPages(studentScrollTarget() || 1);   // e.g. after an .ods load: the saved spot
   } catch (err) {
+    pdfRendering = false;
     currentPdfDoc = null;
     pdfBytes = null;
     pageCanvases = [];
@@ -2085,12 +2103,15 @@ async function renderPdf(arrayBuffer, name) {
 }
 
 // Render all pages of the current document at the current zoom, then scroll to
-// targetPage. Re-entrant: a newer call cancels an in-flight one via renderToken.
+// targetPos (a pdfScrollPos position; selecting a student meanwhile retargets it).
+// Re-entrant: a newer call cancels an in-flight one via renderToken.
 // Each canvas carries its original page number (dataset.page), so `pageCanvases` is also
 // the page order (see movePage); a re-render (zoom) keeps that order.
-async function drawPages(targetPage) {
+async function drawPages(targetPos) {
   if (!currentPdfDoc) return;
   const token = ++renderToken;
+  pdfRendering = true;
+  pendingPdfPos = targetPos || 1;
   const order = pageCanvases.length
     ? pageCanvases.map(c => +c.dataset.page)
     : Array.from({ length: currentPdfDoc.numPages }, (_, i) => i + 1);
@@ -2118,7 +2139,8 @@ async function drawPages(targetPage) {
   pageInput.max = currentPdfDoc.numPages;
   pageCountEl.textContent = "/ " + currentPdfDoc.numPages;
   document.getElementById("pdfZoomLabel").textContent = Math.round(pdfZoom * 100) + "%";
-  goToPage(targetPage || 1);
+  pdfRendering = false;
+  scrollPdfTo(pendingPdfPos);
 }
 
 // Size `canvas` for one PDF.js page and render it, applying the page's own rotation plus
@@ -2193,9 +2215,10 @@ async function savePdf() {
 
 function zoomPdf(factor) {
   if (!currentPdfDoc) return;
-  const keepPage = parseInt(pageInput.value, 10) || 1;
+  // Keep the exact spot (or, mid-render, the spot that render was heading for).
+  const keepPos = pdfRendering ? pendingPdfPos : pdfScrollPos();
   pdfZoom = Math.min(3, Math.max(0.4, pdfZoom * factor));
-  drawPages(keepPage);
+  drawPages(keepPos);
 }
 
 // Scroll so the given 1-based page sits at the top of the PDF pane.
@@ -2205,6 +2228,49 @@ function goToPage(n) {
   const canvas = pageCanvases[n - 1];
   pdfPane.scrollTop = canvas.offsetTop - pdfPane.offsetTop;
   pageInput.value = n;
+}
+
+// Top of the i-th (0-based) page canvas, in the PDF pane's scroll coordinates.
+function pageTop(i) {
+  return pageCanvases[i].offsetTop - pdfPane.offsetTop;
+}
+
+// Distance from the i-th page's top to the next one's (so the gap between pages counts);
+// the last page uses its own height.
+function pagePitch(i) {
+  return (i + 1 < pageCanvases.length ? pageTop(i + 1) : pageTop(i) + pageCanvases[i].offsetHeight) - pageTop(i);
+}
+
+// The exact scroll position as a fractional page number: 3.25 means the top of the pane
+// sits a quarter of the way from page 3's top to page 4's. Unlike pixels, it survives zoom
+// and window resizes. null when no PDF is shown.
+function pdfScrollPos() {
+  if (pageCanvases.length === 0) return null;
+  const y = pdfPane.scrollTop;
+  let i = 0;
+  while (i + 1 < pageCanvases.length && pageTop(i + 1) <= y) i++;
+  const pitch = pagePitch(i);
+  const frac = pitch > 0 ? Math.min(0.9999, Math.max(0, (y - pageTop(i)) / pitch)) : 0;
+  return Math.round((i + 1 + frac) * 10000) / 10000;
+}
+
+// Scroll to a position from pdfScrollPos (a whole number is the top of that page).
+function scrollPdfTo(pos) {
+  if (pageCanvases.length === 0) return;
+  pos = Math.min(pageCanvases.length + 0.9999, Math.max(1, pos));
+  const i = Math.floor(pos) - 1;
+  pdfPane.scrollTop = pageTop(i) + (pos - i - 1) * pagePitch(i);
+  pageInput.value = currentVisiblePage();
+}
+
+// Where the PDF should be for the current student: where it was left last time, else the
+// top of their first page. null when neither is known.
+function studentScrollTarget() {
+  if (!currentStudent) return null;
+  const pos = scrollPosByStudent[currentStudent];
+  if (pos >= 1) return pos;
+  const fp = parseInt(firstPageByStudent[currentStudent], 10);
+  return fp >= 1 ? fp : null;
 }
 
 // Work out which page is currently most in view (from scroll position).
@@ -2226,6 +2292,9 @@ function currentVisiblePage() {
 // Build the save sheets, each as { name, aoa } (an array of cell-arrays).
 // Returned in display order so the workbook tabs come out in that order.
 //   Pages          — [name, first_page] (also the student list and its order)
+//   Scroll_Positions — [name, position] where the PDF was last left for that student, as a
+//                    fractional page (3.25 = a quarter into page 3; see pdfScrollPos),
+//                    blank when never visited with a PDF open
 //   Feedback       — [name, feedback]
 //   Student_groups — [name, group] (group blank when none)
 //   Grading_Scheme — one row per question: [title, "score1 score2 ..."] (the
@@ -2268,7 +2337,8 @@ function buildWorkbook() {
 
   return [
     { name: "Pages",          aoa: students.map(n => [n, firstPageByStudent[n] || ""]) },
-    { name: "Feedback",       aoa: students.map(n => [n, feedbackByStudent[n] || ""]) },
+    { name: "Scroll_Positions", aoa: students.map(n => [n, scrollPosByStudent[n] >= 1 ? scrollPosByStudent[n] : ""]) },
+    { name: "Feedback",      aoa: students.map(n => [n, feedbackByStudent[n] || ""]) },
     { name: "Student_groups", aoa: students.map(n => [n, groupByStudent[n] || ""]) },
     // Per student: [name, ...titles] then ["", ..."score1 score2 ..." per question].
     { name: "Grading_Scheme", aoa: alternating((n, q) => q.scores.join(" ")) },
