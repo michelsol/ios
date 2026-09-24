@@ -1941,6 +1941,18 @@ function sortStudentsByGroup() {
   updateNavButtons();
 }
 
+// Order students as they appear in the PDF: by first page, students without one last.
+// Array sort is stable, so ties and page-less students keep their current order.
+function sortStudentsByFirstPage() {
+  if (students.length < 2) return;
+  const page = n => firstPageByStudent[n] >= 1 ? firstPageByStudent[n] : Infinity;
+  students.sort((a, b) => {
+    const pa = page(a), pb = page(b);
+    return pa === pb ? 0 : pa - pb;   // not a plain difference: Infinity - Infinity is NaN
+  });
+  updateNavButtons();
+}
+
 // Store the group box's value as the current student's group. Skipped while the name box
 // holds a different (new) name: the group box is then preparing the group for "+".
 function assignStudentGroup() {
@@ -1962,7 +1974,8 @@ function shuffleStudents() {
   updateNavButtons();
 }
 
-// Build the student popup's toolbar: move current up/down, sort A–Z, shuffle, sort by group.
+// Build the student popup's toolbar: move current up/down, sort A–Z, shuffle, sort by group,
+// sort by first page.
 function buildStudentToolbar() {
   const bar = document.createElement("div");
   bar.className = "combo-toolbar";
@@ -2004,6 +2017,11 @@ function buildStudentToolbar() {
            '<circle cx="9" cy="7" r="4"/><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>' +
            '<path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>'),
       "Sort students by group", students.length < 2, sortStudentsByGroup);
+  add(tool('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+           'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+           '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>' +
+           '<polyline points="14 2 14 8 20 8"/></svg>'),
+      "Sort students by first page (PDF order)", students.length < 2, sortStudentsByFirstPage);
   return bar;
 }
 
