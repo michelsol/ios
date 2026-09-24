@@ -259,6 +259,7 @@
     display: none;
     max-height: 240px;
     overflow-y: auto;
+    overscroll-behavior: contain;        /* don't chain into the grading list (its scroll closes us) */
     background: #fff;
     border: 1px solid var(--border);
     border-radius: 6px;
@@ -1216,7 +1217,12 @@ function buildQuestionBlock(q, disableUp, disableDown) {
     comment.dataset.key = key;
     comment.autocomplete = "off";
     comment._comboItems = () => commentBank;
-    comment._comboSelect = (val) => { comment.value = val; onCommentChange(comment); };
+    // A picked suggestion is appended to what's already there, not substituted for it.
+    comment._comboSelect = (val) => {
+      const cur = comment.value.trim();
+      comment.value = cur ? cur + ", " + val : val;
+      onCommentChange(comment);
+    };
     // Each suggestion carries its own reorder/remove buttons (they used to sit in the row).
     comment._comboItemButtons = (s) => {
       const i = commentBank.indexOf(s);
@@ -1646,6 +1652,30 @@ function addStudent() {
   if (group) groupByStudent[name] = group;
   studentSelect.value = name;
   switchToStudent(name);
+}
+
+// Add several students at once (a column pasted from a spreadsheet). Like addStudent,
+// each inherits a copy of the current student's questions and the group box's value,
+// but none gets a first page. Names already in the list are skipped. The selection
+// stays on the current student (the first new one when the list was empty).
+function addStudents(names) {
+  saveCurrentStudent();
+  const scheme = schemeFor(currentStudent);
+  const group = studentGroupInput.value.trim();
+  const added = [];
+  for (const name of names) {
+    if (students.indexOf(name) >= 0) continue;   // also dedupes within the paste
+    students.push(name);
+    schemeByStudent[name] = cloneScheme(scheme);
+    gradesByStudent[name] = {};
+    commentsByStudent[name] = {};
+    feedbackByStudent[name] = "";
+    if (group) groupByStudent[name] = group;
+    added.push(name);
+  }
+  switchToStudent(currentStudent || added[0] || "");
+  studentSelect.value = currentStudent;        // drop the pasted text from the box
+  if (activeComboInput === studentSelect && comboPopup.classList.contains("open")) openCombo(studentSelect);
 }
 
 // Remove the currently selected student (from the "−" button).
@@ -2533,6 +2563,15 @@ studentSelect.addEventListener("input", () => {
   if (name && students.indexOf(name) < 0)
     firstPageInput.value = pageCanvases.length ? currentVisiblePage() : "";
 });
+// Pasting several lines (a column copied from a spreadsheet) adds every name as a student.
+// Only the first cell of each row counts; a single line pastes into the box as usual.
+studentSelect.addEventListener("paste", e => {
+  const text = (e.clipboardData || window.clipboardData).getData("text") || "";
+  const names = text.split(/\r?\n/).map(row => row.split("\t")[0].trim()).filter(Boolean);
+  if (names.length < 2) return;
+  e.preventDefault();
+  addStudents(names);
+});
 document.getElementById("btnPrev").addEventListener("click", () => moveStudent(-1));
 document.getElementById("btnNext").addEventListener("click", () => moveStudent(1));
 
@@ -2681,9 +2720,11 @@ pdfPane.addEventListener("scroll", () => {
 });
 
 // Mouse wheel always scrolls the PDF, from anywhere on the page (including over
-// the grading area). The grading list can still be scrolled by dragging its scrollbar.
+// the grading area), unless a combo list is open. The grading list can still be
+// scrolled by dragging its scrollbar.
 window.addEventListener("wheel", e => {
   if (!onlyScrollPdf.checked) return; // let the hovered area scroll natively
+  if (comboPopup.classList.contains("open")) return; // a combo is open: scroll natively
   if (pdfPane.scrollHeight <= pdfPane.clientHeight) return; // nothing to scroll
   pdfPane.scrollTop += e.deltaY;
   e.preventDefault();
