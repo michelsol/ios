@@ -2812,6 +2812,15 @@ document.addEventListener("pointerdown", e => {
 document.addEventListener("keydown", e => {
   if (e.key === "Escape" && comboPopup.classList.contains("open")) closeCombo();
 });
+// A box keeps focus after its list closes (a pick, Escape, a scroll), and focus alone
+// won't fire again — so a click on a combo box reopens its list too. "click", not
+// "mousedown": on a first click, focus (fired on mousedown) has already opened it.
+document.addEventListener("click", e => {
+  const input = e.target.closest && e.target.closest(".combo input");
+  if (!input || !input._comboItems) return;
+  if (activeComboInput === input && comboPopup.classList.contains("open")) return;
+  openCombo(input);
+});
 questionsEl.addEventListener("scroll", () => { if (comboPopup.classList.contains("open")) closeCombo(); });
 window.addEventListener("resize", () => { if (comboPopup.classList.contains("open")) closeCombo(); });
 
