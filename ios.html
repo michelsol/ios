@@ -20,6 +20,7 @@
     --graded-fill: rgba(63, 166, 99, 0.25);   /* progress fill; translucent, so text stays legible */
     --ungraded: #f4c152;
     --ungraded-bg: #fffcf2;
+    --unset: #d97706;       /* a student without a PDF position yet (first pass) */
   }
   * { box-sizing: border-box; }
   html, body {
@@ -175,6 +176,7 @@
     display: flex; align-items: center; justify-content: center;
   }
   #studentPositionInput { flex: 0 0 auto; width: 5em; }
+  #studentPositionLabel.firstpass { color: var(--unset); }  /* some student has no position yet */
   .fbicon { flex: 0 0 auto; width: 18px; height: 18px; color: var(--muted); }
   #questions {
     flex: 1 1 auto;
@@ -285,7 +287,9 @@
   .combo-note { margin-left: 8px; color: var(--muted); font-weight: 400; } /* e.g. a student's group */
   /* Progress fill: how much of this student is graded. Grows from the left, under the text. */
   .combo-fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--graded-fill); }
-  .combo-label, .combo-note { position: relative; }   /* above the fill */
+  .combo-tag { margin-left: 8px; font-size: 12px; color: var(--muted); font-weight: 400; } /* e.g. a student's page */
+  .combo-tag.unset { padding: 0 4px; border: 1px dashed var(--unset); border-radius: 4px; color: var(--unset); }
+  .combo-label, .combo-note, .combo-tag { position: relative; }   /* above the fill */
   .combo-label { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
   /* Per-row controls (the comment list uses them to reorder and remove suggestions). */
   .combo-actions { position: relative; flex: 0 0 auto; display: flex; align-items: center; gap: 2px; }
@@ -626,7 +630,7 @@
     <div id="studentBar">
       <button id="btnPrev" class="nav" title="Previous student">&#9650;</button>
       <button id="btnNext" class="nav" title="Next student">&#9660;</button>
-      <label for="studentPositionInput" aria-label="Position">
+      <label for="studentPositionInput" id="studentPositionLabel" aria-label="Position">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -791,6 +795,7 @@ const progressFill  = document.getElementById("progressFill");
 const studentGroupInput = document.getElementById("studentGroupInput");
 const studentGroupArrow = document.getElementById("studentGroupArrow");
 const studentPositionInput = document.getElementById("studentPositionInput");
+const studentPositionLabel = document.getElementById("studentPositionLabel");
 const totalValueEl  = document.getElementById("totalValue");
 const totalMaxEl    = document.getElementById("totalMax");
 const comboPopup    = document.getElementById("comboPopup");
@@ -1422,6 +1427,15 @@ function openCombo(input) {
       item.appendChild(span);
       item.title = s + " · " + note;
     }
+    // Optional small tag after that (the student list shows each student's page).
+    const tag = input._comboItemTag ? input._comboItemTag(s) : null;
+    if (tag) {
+      const span = document.createElement("span");
+      span.className = "combo-tag" + (tag.cls ? " " + tag.cls : "");
+      span.textContent = tag.text;
+      item.appendChild(span);
+      item.title += " · " + tag.text;
+    }
     // Optional per-row buttons (the comment list reorders and removes suggestions with
     // them). They act on their own row, so they must not also select it.
     const buttons = (input._comboItemButtons && input._comboItemButtons(s)) || [];
@@ -1673,9 +1687,6 @@ function addStudent() {
   gradesByStudent[name] = {};   // every question starts ungraded
   commentsByStudent[name] = {};
   feedbackByStudent[name] = "";
-  // Starts where the PDF is now (without a PDF, whatever the position box holds).
-  const pos = pageCanvases.length ? pdfScrollPos() : parseFloat(studentPositionInput.value);
-  if (pos >= 1) scrollPosByStudent[name] = pos;
   const group = studentGroupInput.value.trim();  // the group box's value (often the previous student's)
   if (group) groupByStudent[name] = group;
   studentSelect.value = name;
@@ -1875,8 +1886,7 @@ function saveCurrentStudent() {
     comments[input.dataset.key] = input.value.trim();
   });
   feedbackByStudent[currentStudent] = globalFeedback.value;
-  // Remember where the PDF was left for this student (not mid-render: offsets aren't final).
-  if (pageCanvases.length && !pdfRendering) scrollPosByStudent[currentStudent] = pdfScrollPos();
+  recordLivePosition();  // live mode: remember where the PDF was left for this student
 }
 
 // Apply a student's stored selections to the radios and update the total.
@@ -1905,17 +1915,19 @@ function loadStudent(name) {
   recomputeTotal();
   recomputeSubtotals();
 
-  // Bring the PDF back to where it was left for this student. Mid-render the page offsets
-  // aren't final, so the render scrolls there once it is done. A student with no position
-  // yet leaves the PDF in place and takes that spot (syncStudentPosition). Without a PDF,
-  // the box just shows the stored position.
+  // Bring the PDF back to this student's position. Mid-render the page offsets aren't
+  // final, so the render scrolls there once it is done. A student with no position yet
+  // leaves the PDF in place and takes the page in view (first pass). No live recording
+  // here: a page just claimed stays whole until the PDF is actually scrolled.
   const target = currentStudent ? scrollPosByStudent[currentStudent] : null;
   if (target >= 1) {
     if (pdfRendering) pendingPdfPos = target;
     else scrollPdfTo(target);
+  } else {
+    claimPageIfUnset();
   }
-  studentPositionInput.value = target >= 1 ? roundPos(target) : "";
-  syncStudentPosition();
+  showStudentPosition();
+  refreshPositionMode();
 }
 
 // Step to another student. Clamped at both ends, and a move that would land on the student
@@ -2164,7 +2176,9 @@ async function drawPages(targetPos) {
   document.getElementById("pdfZoomLabel").textContent = Math.round(pdfZoom * 100) + "%";
   pdfRendering = false;
   scrollPdfTo(pendingPdfPos);
-  syncStudentPosition();
+  claimPageIfUnset();         // e.g. pasted students' .ods, then the PDF: the first gets page 1
+  showStudentPosition();
+  refreshPositionMode();
 }
 
 // Size `canvas` for one PDF.js page and render it, applying the page's own rotation plus
@@ -2295,14 +2309,44 @@ function roundPos(pos) {
 
 let positionTyping = false;  // a value is being typed in the position box (see its listeners)
 
-// Record where the PDF is as the current student's position, and show it in the position
-// box — unless a value is being typed there, which isn't overwritten (it resyncs on Enter
-// or blur). Skipped with no PDF, or mid-render, when the page offsets aren't final.
-function syncStudentPosition() {
-  if (!pageCanvases.length || pdfRendering) return;
-  const pos = pdfScrollPos();
-  if (currentStudent) scrollPosByStudent[currentStudent] = pos;
-  if (!positionTyping) studentPositionInput.value = roundPos(pos);
+// Positions work in two modes:
+//   first pass — some student has no position yet: selecting such a student gives them the
+//                whole page in view (claimPageIfUnset), and scrolling never moves anyone's;
+//   live       — every student has one: the current student's follows the PDF as it scrolls.
+function positionsComplete() {
+  return students.every(n => scrollPosByStudent[n] >= 1);
+}
+
+// Live mode only: record where the PDF is as the current student's position. Skipped with
+// no PDF, or mid-render, when the page offsets aren't final.
+function recordLivePosition() {
+  if (!pageCanvases.length || pdfRendering || !currentStudent || !positionsComplete()) return;
+  scrollPosByStudent[currentStudent] = pdfScrollPos();
+  showStudentPosition();
+}
+
+// First pass: a student selected with no position yet takes the whole page in view.
+function claimPageIfUnset() {
+  if (!pageCanvases.length || pdfRendering || !currentStudent) return;
+  if (!(scrollPosByStudent[currentStudent] >= 1)) scrollPosByStudent[currentStudent] = currentVisiblePage();
+}
+
+// Show the current student's stored position in the position box (blank when none),
+// unless a value is being typed there, which isn't overwritten (it resyncs on Enter or blur).
+function showStudentPosition() {
+  if (positionTyping) return;
+  const pos = currentStudent ? scrollPosByStudent[currentStudent] : null;
+  studentPositionInput.value = pos >= 1 ? roundPos(pos) : "";
+}
+
+// The page icon turns amber during the first pass; its tooltip says how many are missing.
+function refreshPositionMode() {
+  const missing = students.filter(n => !(scrollPosByStudent[n] >= 1)).length;
+  studentPositionLabel.classList.toggle("firstpass", missing > 0);
+  studentPositionLabel.title = missing
+    ? missing + (missing > 1 ? " students have" : " student has") + " no page yet: positions " +
+      "stay fixed while scrolling until every student has one"
+    : "Position follows the PDF as you scroll";
 }
 
 // Work out which page is currently most in view (from scroll position).
@@ -2636,6 +2680,10 @@ studentSelect._comboItemClass = (name) =>
   studentStatus(name) + (name === currentStudent ? " current" : "");
 studentSelect._comboToolbar = buildStudentToolbar;
 studentSelect._comboItemNote = (name) => groupByStudent[name] || "";  // greyed group after the name
+// Each student's page, or a "no page" tag while their position isn't set (first pass).
+studentSelect._comboItemTag = (name) => scrollPosByStudent[name] >= 1
+  ? { text: "p. " + Math.floor(scrollPosByStudent[name]) }
+  : { text: "no page", cls: "unset" };
 studentSelect._comboItemFill = studentFraction;                       // background = grading progress
 studentSelect.addEventListener("focus", () => openCombo(studentSelect));
 studentArrow.addEventListener("mousedown", e => {
@@ -2657,21 +2705,28 @@ studentGroupArrow.addEventListener("mousedown", e => {
 document.getElementById("btnAddStudent").addEventListener("click", addStudent);
 document.getElementById("btnRemoveStudent").addEventListener("click", removeStudent);
 
-// The position box follows the PDF (syncStudentPosition). Editing it — typing, or its
-// arrows, which (step 1) ceil/floor a fractional value to the next whole page — scrolls
-// the PDF there, and the scroll stores the actual (clamped) spot. Without a PDF, the
-// value is stored as is.
+// The position box shows the current student's position (showStudentPosition). Editing
+// it — typing, or its arrows, which (step 1) ceil/floor a fractional value to the next
+// whole page — is an explicit choice, stored in either mode (it's how a page set by
+// mistake on the first pass gets fixed): the PDF scrolls there and the actual (clamped)
+// spot is stored. Without a PDF (or mid-render), the value is stored as is.
 studentPositionInput.addEventListener("input", () => {
   const v = parseFloat(studentPositionInput.value);
-  if (!(v >= 1)) return;
-  if (pageCanvases.length) scrollPdfTo(v);
-  else if (currentStudent) scrollPosByStudent[currentStudent] = v;
+  if (!(v >= 1) || !currentStudent) return;
+  if (pageCanvases.length && !pdfRendering) {
+    scrollPdfTo(v);
+    scrollPosByStudent[currentStudent] = pdfScrollPos();
+  } else {
+    scrollPosByStudent[currentStudent] = v;
+    if (pdfRendering) pendingPdfPos = v;
+  }
+  refreshPositionMode();
 });
 studentPositionInput.addEventListener("keydown", () => { positionTyping = true; });
-// Enter/spinner ("change") or leaving the box: show the actual position again.
+// Enter/spinner ("change") or leaving the box: show the stored position again.
 ["change", "blur"].forEach(type => studentPositionInput.addEventListener(type, () => {
   positionTyping = false;
-  syncStudentPosition();
+  showStudentPosition();
 }));
 // Pasting several lines (a column copied from a spreadsheet) adds every name as a student.
 // Only the first cell of each row counts; a single line pastes into the box as usual.
@@ -2835,7 +2890,7 @@ pdfPane.addEventListener("scroll", () => {
     if (pageCanvases.length === 0) return;
     const n = currentVisiblePage();
     if (parseInt(pageInput.value, 10) !== n) pageInput.value = n;
-    syncStudentPosition();
+    recordLivePosition();
   });
 });
 
