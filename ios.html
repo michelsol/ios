@@ -237,7 +237,7 @@
     cursor: pointer;
   }
   .combo-arrow:hover { background: #e9ebee; color: var(--text); }
-  .combo-add, .combo-del {
+  .combo-add, .combo-clear {
     flex: 0 0 auto;
     border: 0;
     border-left: 1px solid var(--border);
@@ -251,8 +251,8 @@
   }
   .combo-add { color: #15803d; }
   .combo-add:hover { background: #e7f6ec; }
-  .combo-del { color: #b91c1c; }
-  .combo-del:hover { background: #fdecec; }
+  .combo-clear { color: var(--muted); }
+  .combo-clear:hover { background: #e9ebee; color: var(--text); }
   #comboPopup {
     position: fixed;
     z-index: 1000;
@@ -697,8 +697,8 @@
         <input type="text" id="globalFeedback" class="qcomment" autocomplete="off" placeholder="">
         <button type="button" id="feedbackAdd" class="combo-add" tabindex="-1"
                 title="Add this feedback to the suggestion list">+</button>
-        <button type="button" id="feedbackDel" class="combo-del" tabindex="-1"
-                title="Remove this feedback from the suggestion list">&#8722;</button>
+        <button type="button" id="feedbackClear" class="combo-clear" tabindex="-1"
+                title="Clear this feedback">&times;</button>
         <button type="button" id="feedbackArrow" class="combo-arrow" tabindex="-1">&#9662;</button>
       </div>
       <span class="zoomctl">
@@ -799,7 +799,7 @@ const comboPopup    = document.getElementById("comboPopup");
 const addQuestionBar = document.getElementById("addQuestionBar");
 const globalFeedback = document.getElementById("globalFeedback");
 const feedbackAdd   = document.getElementById("feedbackAdd");
-const feedbackDel   = document.getElementById("feedbackDel");
+const feedbackClear = document.getElementById("feedbackClear");
 const feedbackArrow = document.getElementById("feedbackArrow");
 let activeComboInput = null;   // the comment input the popup is currently attached to
 
@@ -878,6 +878,29 @@ function bankMove(bank, s, delta) {
   if (i < 0 || j < 0 || j >= bank.length) return;
   bank[i] = bank[j];
   bank[j] = s;
+}
+
+// The `_comboItemButtons` hook for a suggestion list: each row carries its own
+// move up / move down / remove buttons. `noun` names the entries in the tooltips.
+function bankItemButtons(bank, set, noun) {
+  return (s) => {
+    const i = bank.indexOf(s);
+    return [
+      { label: "▲", cls: "arrow", title: "Move this suggestion up",
+        disabled: i <= 0, action: () => bankMove(bank, s, -1) },
+      { label: "▼", cls: "arrow", title: "Move this suggestion down",
+        disabled: i < 0 || i >= bank.length - 1, action: () => bankMove(bank, s, 1) },
+      { label: "−", cls: "del", title: "Remove this " + noun + " from the suggestion list",
+        action: () => bankRemove(bank, set, s) },
+    ];
+  };
+}
+
+// A picked suggestion is appended to what's already in the box (", " between), not
+// substituted for it.
+function appendSuggestion(input, val) {
+  const cur = input.value.trim();
+  input.value = cur ? cur + ", " + val : val;
 }
 
 // Format a number for display/output without float noise (e.g. 0.7500001 -> "0.75").
@@ -1218,26 +1241,21 @@ function buildQuestionBlock(q, disableUp, disableDown) {
     comment.dataset.key = key;
     comment.autocomplete = "off";
     comment._comboItems = () => commentBank;
-    // A picked suggestion is appended to what's already there, not substituted for it.
-    comment._comboSelect = (val) => {
-      const cur = comment.value.trim();
-      comment.value = cur ? cur + ", " + val : val;
-      onCommentChange(comment);
-    };
+    comment._comboSelect = (val) => { appendSuggestion(comment, val); onCommentChange(comment); };
     // Each suggestion carries its own reorder/remove buttons (they used to sit in the row).
-    comment._comboItemButtons = (s) => {
-      const i = commentBank.indexOf(s);
-      return [
-        { label: "▲", cls: "arrow", title: "Move this suggestion up",
-          disabled: i <= 0, action: () => bankMove(commentBank, s, -1) },
-        { label: "▼", cls: "arrow", title: "Move this suggestion down",
-          disabled: i < 0 || i >= commentBank.length - 1, action: () => bankMove(commentBank, s, 1) },
-        { label: "−", cls: "del", title: "Remove this comment from the suggestion list",
-          action: () => bankRemove(commentBank, commentBankSet, s) },
-      ];
-    };
+    comment._comboItemButtons = bankItemButtons(commentBank, commentBankSet, "comment");
     comment.addEventListener("change", () => onCommentChange(comment));
     comment.addEventListener("focus", () => openCombo(comment));
+    const clearBtn = document.createElement("button");
+    clearBtn.type = "button";
+    clearBtn.className = "combo-clear";
+    clearBtn.tabIndex = -1;
+    clearBtn.title = "Clear this comment";
+    clearBtn.textContent = "×";
+    clearBtn.addEventListener("mousedown", e => {
+      e.preventDefault();
+      clearComboInput(comment, () => onCommentChange(comment));
+    });
     const addBtn = document.createElement("button");
     addBtn.type = "button";
     addBtn.className = "combo-add";
@@ -1251,6 +1269,7 @@ function buildQuestionBlock(q, disableUp, disableDown) {
     });
     combo.appendChild(comment);
     combo.appendChild(addBtn);   // removing and reordering happen inside the dropdown
+    combo.appendChild(clearBtn);
     block.appendChild(combo);
 
     const qmoveGroup = document.createElement("div");
@@ -1471,6 +1490,15 @@ function selectComboItem(value) {
 function closeCombo() {
   comboPopup.classList.remove("open");
   activeComboInput = null;
+}
+
+// A combo's clear (×) button: empty the box and store that (`store`), leaving nothing
+// active — no cursor in the box and its suggestion list closed.
+function clearComboInput(input, store) {
+  input.value = "";
+  store();
+  input.blur();
+  closeCombo();
 }
 
 function onRadioChange(e) {
@@ -2670,12 +2698,17 @@ globalFeedback.addEventListener("input", () => {
 
 // Global feedback is an editable combobox backed by its own suggestion list
 // (feedbackBank), mirroring the per-question comment combo.
-globalFeedback._comboItems  = () => feedbackBank;
-globalFeedback._comboSelect = (val) => {
-  globalFeedback.value = val;
-  if (currentStudent) feedbackByStudent[currentStudent] = val;
+const storeFeedback = () => {
+  if (currentStudent) feedbackByStudent[currentStudent] = globalFeedback.value;
 };
+globalFeedback._comboItems  = () => feedbackBank;
+globalFeedback._comboSelect = (val) => { appendSuggestion(globalFeedback, val); storeFeedback(); };
+globalFeedback._comboItemButtons = bankItemButtons(feedbackBank, feedbackBankSet, "feedback");
 globalFeedback.addEventListener("focus", () => openCombo(globalFeedback));
+feedbackClear.addEventListener("mousedown", e => {
+  e.preventDefault();
+  clearComboInput(globalFeedback, storeFeedback);
+});
 feedbackArrow.addEventListener("mousedown", e => {
   e.preventDefault();
   (activeComboInput === globalFeedback && comboPopup.classList.contains("open"))
@@ -2684,11 +2717,6 @@ feedbackArrow.addEventListener("mousedown", e => {
 feedbackAdd.addEventListener("mousedown", e => {
   e.preventDefault();
   bankAdd(feedbackBank, feedbackBankSet, globalFeedback.value);
-  if (activeComboInput === globalFeedback && comboPopup.classList.contains("open")) openCombo(globalFeedback);
-});
-feedbackDel.addEventListener("mousedown", e => {
-  e.preventDefault();
-  bankRemove(feedbackBank, feedbackBankSet, globalFeedback.value);
   if (activeComboInput === globalFeedback && comboPopup.classList.contains("open")) openCombo(globalFeedback);
 });
 
