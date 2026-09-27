@@ -176,7 +176,9 @@
     display: flex; align-items: center; justify-content: center;
   }
   #studentPositionInput { flex: 0 0 auto; width: 5em; }
-  #studentPositionLabel.firstpass { color: var(--unset); }  /* some student has no position yet */
+  #btnSetPosition { display: inline-flex; align-items: center; justify-content: center; }
+  #btnSetPosition svg { width: 16px; height: 16px; display: block; }
+  #btnSetPosition.firstpass { color: var(--unset); }  /* some student has no position yet */
   .fbicon { flex: 0 0 auto; width: 18px; height: 18px; color: var(--muted); }
   #questions {
     flex: 1 1 auto;
@@ -287,8 +289,12 @@
   .combo-note { margin-left: 8px; color: var(--muted); font-weight: 400; } /* e.g. a student's group */
   /* Progress fill: how much of this student is graded. Grows from the left, under the text. */
   .combo-fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--graded-fill); }
-  .combo-tag { margin-left: 8px; font-size: 12px; color: var(--muted); font-weight: 400; } /* e.g. a student's page */
-  .combo-tag.unset { padding: 0 4px; border: 1px dashed var(--unset); border-radius: 4px; color: var(--unset); }
+  .combo-tag {                         /* e.g. a student's page */
+    display: inline-flex; align-items: center; gap: 2px;
+    margin-left: 8px; font-size: 12px; color: var(--muted); font-weight: 400;
+  }
+  .combo-tag svg { width: 13px; height: 13px; flex: 0 0 auto; }
+  .combo-tag.unset { color: var(--unset); }
   .combo-label, .combo-note, .combo-tag { position: relative; }   /* above the fill */
   .combo-label { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
   /* Per-row controls (the comment list uses them to reorder and remove suggestions). */
@@ -630,13 +636,13 @@
     <div id="studentBar">
       <button id="btnPrev" class="nav" title="Previous student">&#9650;</button>
       <button id="btnNext" class="nav" title="Next student">&#9660;</button>
-      <label for="studentPositionInput" id="studentPositionLabel" aria-label="Position">
+      <button type="button" id="btnSetPosition" class="nav" aria-label="Set page">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
           <polyline points="14 2 14 8 20 8"/>
         </svg>
-      </label>
+      </button>
       <input type="number" id="studentPositionInput" min="1" step="1"
              title="Student's position in the PDF (page.fraction)">
       <label for="studentSelect" aria-label="Student">
@@ -795,7 +801,7 @@ const progressFill  = document.getElementById("progressFill");
 const studentGroupInput = document.getElementById("studentGroupInput");
 const studentGroupArrow = document.getElementById("studentGroupArrow");
 const studentPositionInput = document.getElementById("studentPositionInput");
-const studentPositionLabel = document.getElementById("studentPositionLabel");
+const btnSetPosition = document.getElementById("btnSetPosition");
 const totalValueEl  = document.getElementById("totalValue");
 const totalMaxEl    = document.getElementById("totalMax");
 const comboPopup    = document.getElementById("comboPopup");
@@ -1427,14 +1433,15 @@ function openCombo(input) {
       item.appendChild(span);
       item.title = s + " · " + note;
     }
-    // Optional small tag after that (the student list shows each student's page).
+    // Optional small tag after that, as markup plus a tooltip text (the student list shows
+    // each student's page as an icon).
     const tag = input._comboItemTag ? input._comboItemTag(s) : null;
     if (tag) {
       const span = document.createElement("span");
       span.className = "combo-tag" + (tag.cls ? " " + tag.cls : "");
-      span.textContent = tag.text;
+      span.innerHTML = tag.html;
       item.appendChild(span);
-      item.title += " · " + tag.text;
+      if (tag.title) item.title += " · " + tag.title;
     }
     // Optional per-row buttons (the comment list reorders and removes suggestions with
     // them). They act on their own row, so they must not also select it.
@@ -1917,14 +1924,11 @@ function loadStudent(name) {
 
   // Bring the PDF back to this student's position. Mid-render the page offsets aren't
   // final, so the render scrolls there once it is done. A student with no position yet
-  // leaves the PDF in place and takes the page in view (first pass). No live recording
-  // here: a page just claimed stays whole until the PDF is actually scrolled.
+  // leaves the PDF in place (the page button gives them one).
   const target = currentStudent ? scrollPosByStudent[currentStudent] : null;
   if (target >= 1) {
     if (pdfRendering) pendingPdfPos = target;
     else scrollPdfTo(target);
-  } else {
-    claimPageIfUnset();
   }
   showStudentPosition();
   refreshPositionMode();
@@ -2066,11 +2070,7 @@ function buildStudentToolbar() {
            '<circle cx="9" cy="7" r="4"/><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>' +
            '<path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>'),
       "Sort students by group", students.length < 2, sortStudentsByGroup);
-  add(tool('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
-           'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-           '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>' +
-           '<polyline points="14 2 14 8 20 8"/></svg>'),
-      "Sort students by position in the PDF", students.length < 2, sortStudentsByPosition);
+  add(tool(pageIcon()), "Sort students by position in the PDF", students.length < 2, sortStudentsByPosition);
   return bar;
 }
 
@@ -2176,7 +2176,6 @@ async function drawPages(targetPos) {
   document.getElementById("pdfZoomLabel").textContent = Math.round(pdfZoom * 100) + "%";
   pdfRendering = false;
   scrollPdfTo(pendingPdfPos);
-  claimPageIfUnset();         // e.g. pasted students' .ods, then the PDF: the first gets page 1
   showStudentPosition();
   refreshPositionMode();
 }
@@ -2310,8 +2309,9 @@ function roundPos(pos) {
 let positionTyping = false;  // a value is being typed in the position box (see its listeners)
 
 // Positions work in two modes:
-//   first pass — some student has no position yet: selecting such a student gives them the
-//                whole page in view (claimPageIfUnset), and scrolling never moves anyone's;
+//   first pass — some student has no position yet: each gets one from the page button (the
+//                whole page in view, see setPositionToPageInView) or the position box, and
+//                scrolling never moves anyone's;
 //   live       — every student has one: the current student's follows the PDF as it scrolls.
 function positionsComplete() {
   return students.every(n => scrollPosByStudent[n] >= 1);
@@ -2325,10 +2325,13 @@ function recordLivePosition() {
   showStudentPosition();
 }
 
-// First pass: a student selected with no position yet takes the whole page in view.
-function claimPageIfUnset() {
+// The page button: the current student's position becomes the whole page in view. No jump:
+// that page is already in view (in live mode, the next scroll takes over from there).
+function setPositionToPageInView() {
   if (!pageCanvases.length || pdfRendering || !currentStudent) return;
-  if (!(scrollPosByStudent[currentStudent] >= 1)) scrollPosByStudent[currentStudent] = currentVisiblePage();
+  scrollPosByStudent[currentStudent] = currentVisiblePage();
+  showStudentPosition();
+  refreshPositionMode();
 }
 
 // Show the current student's stored position in the position box (blank when none),
@@ -2339,14 +2342,23 @@ function showStudentPosition() {
   studentPositionInput.value = pos >= 1 ? roundPos(pos) : "";
 }
 
-// The page icon turns amber during the first pass; its tooltip says how many are missing.
+// The page button turns amber during the first pass; its tooltip says how many are missing.
 function refreshPositionMode() {
   const missing = students.filter(n => !(scrollPosByStudent[n] >= 1)).length;
-  studentPositionLabel.classList.toggle("firstpass", missing > 0);
-  studentPositionLabel.title = missing
-    ? missing + (missing > 1 ? " students have" : " student has") + " no page yet: positions " +
-      "stay fixed while scrolling until every student has one"
-    : "Position follows the PDF as you scroll";
+  btnSetPosition.classList.toggle("firstpass", missing > 0);
+  btnSetPosition.title = "Set the page in view as this student's position" + (missing
+    ? "\n" + missing + (missing > 1 ? " students have" : " student has") + " no page yet: " +
+      "positions stay fixed while scrolling until every student has one"
+    : "");
+}
+
+// A page icon (SVG markup), optionally crossed out.
+function pageIcon(crossed) {
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+         'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+         '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>' +
+         '<polyline points="14 2 14 8 20 8"/>' +
+         (crossed ? '<line x1="3" y1="3" x2="21" y2="21"/>' : "") + '</svg>';
 }
 
 // Work out which page is currently most in view (from scroll position).
@@ -2680,10 +2692,15 @@ studentSelect._comboItemClass = (name) =>
   studentStatus(name) + (name === currentStudent ? " current" : "");
 studentSelect._comboToolbar = buildStudentToolbar;
 studentSelect._comboItemNote = (name) => groupByStudent[name] || "";  // greyed group after the name
-// Each student's page, or a "no page" tag while their position isn't set (first pass).
-studentSelect._comboItemTag = (name) => scrollPosByStudent[name] >= 1
-  ? { text: "p. " + Math.floor(scrollPosByStudent[name]) }
-  : { text: "no page", cls: "unset" };
+// Each student's page (page icon + number), or a crossed-out page while their position
+// isn't set (first pass).
+studentSelect._comboItemTag = (name) => {
+  const pos = scrollPosByStudent[name];
+  return pos >= 1
+    ? { html: pageIcon() + Math.floor(pos), title: "page " + Math.floor(pos) }
+    : { html: pageIcon(true), title: "no page yet", cls: "unset" };
+};
+btnSetPosition.addEventListener("click", setPositionToPageInView);
 studentSelect._comboItemFill = studentFraction;                       // background = grading progress
 studentSelect.addEventListener("focus", () => openCombo(studentSelect));
 studentArrow.addEventListener("mousedown", e => {
