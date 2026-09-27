@@ -76,7 +76,8 @@
     border-bottom: 1px solid var(--border);
     background: var(--panel);
   }
-  #pdfBar .pglabel { font-size: 13px; color: var(--muted); }
+  #pdfBar .pglabel { color: var(--muted); }   /* same size as the page box ("font: inherit") */
+  #pdfBar .vsep { margin: 0 6px; }             /* groups: file | navigate | edit pages | view */
   #pageInput {
     width: 64px;
     text-align: center;
@@ -168,7 +169,7 @@
   #studentCombo.ungraded { border-left-color: var(--ungraded); background: var(--ungraded-bg); }
   #studentCombo .qcomment, #studentCombo .combo-arrow { position: relative; }  /* above the fill */
   #studentGroupCombo { flex: 0 1 8em; min-width: 5em; }
-  /* Add/remove student, stacked vertically to take about one combo's height. */
+  /* Stacked button pairs (prev/next page, move page), about one combo's height. */
   .nav-stack { flex: 0 0 auto; display: flex; flex-direction: column; gap: 2px; }
   .nav-stack button.nav {
     padding: 0; width: 26px; height: 16px;
@@ -341,6 +342,7 @@
   }
   .combo-tool svg { width: 14px; height: 14px; }
   .combo-tool:hover:not(:disabled) { background: #f0f5ff; border-color: #c7d7f5; color: var(--accent); }
+  .combo-tool.del:hover:not(:disabled) { background: #fdecec; border-color: #f1c6c6; color: #b91c1c; }
   .question .qtitle {
     flex: 0 0 auto;
     font-weight: 600;
@@ -476,7 +478,7 @@
     background: #f9fafb;
   }
   #totalBar .max { color: var(--muted); font-weight: 500; }
-  #totalBar .vsep { flex: 0 0 auto; align-self: stretch; width: 1px; background: var(--border); }
+  #pdfBar .vsep, #totalBar .vsep { flex: 0 0 auto; align-self: stretch; width: 1px; background: var(--border); }
   .totalLabel { flex: 0 0 auto; white-space: nowrap; }
   #feedbackCombo { flex: 1 1 auto; }
   #globalFeedback { font-weight: 400; font-size: 14px; }
@@ -563,27 +565,21 @@
           <polyline points="7 3 7 8 15 8"/>
         </svg>
       </button>
+      <span class="vsep"></span>
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
            stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
            aria-label="Page" style="flex:0 0 auto">
         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
         <polyline points="14 2 14 8 20 8"/>
       </svg>
-      <input type="number" id="pageInput" min="1" step="any" value="1" disabled
-             title="Position in the PDF (5.5 = halfway into page 5)">
       <div class="nav-stack">
         <button id="btnPagePrev" class="nav" tabindex="-1" title="Previous page" disabled>&#9650;</button>
         <button id="btnPageNext" class="nav" tabindex="-1" title="Next page" disabled>&#9660;</button>
       </div>
+      <input type="number" id="pageInput" min="1" step="any" value="1" disabled
+             title="Position in the PDF (5.5 = halfway into page 5)">
       <span class="pglabel" id="pageCount">/ 0</span>
-      <button id="btnRotatePage" class="secondary" aria-label="Rotate page"
-        title="Rotate current page 90° clockwise" disabled>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <polyline points="23 4 23 10 17 10"/>
-          <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-        </svg>
-      </button>
+      <span class="vsep"></span>
       <div class="nav-stack">
         <button id="btnPageUp" class="nav" title="Move current page up" aria-label="Move page up" disabled>
           <svg viewBox="0 0 24 16" fill="none" stroke="currentColor" stroke-width="1.6"
@@ -600,7 +596,16 @@
           </svg>
         </button>
       </div>
-      <span class="zoomctl" style="margin-left:14px;">
+      <button id="btnRotatePage" class="secondary" aria-label="Rotate page"
+        title="Rotate current page 90° clockwise" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="23 4 23 10 17 10"/>
+          <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+        </svg>
+      </button>
+      <span class="vsep"></span>
+      <span class="zoomctl">
         <svg class="lens" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
@@ -662,13 +667,6 @@
     <div id="studentBar">
       <button id="btnPrev" class="nav" title="Previous student">&#9650;</button>
       <button id="btnNext" class="nav" title="Next student">&#9660;</button>
-      <button type="button" id="btnSetPosition" class="nav" aria-label="Set page">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-          <polyline points="14 2 14 8 20 8"/>
-        </svg>
-      </button>
       <label for="studentSelect" aria-label="Student">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -682,10 +680,14 @@
         <span id="studentPageTag" class="combo-tag"></span>
         <button type="button" id="studentArrow" class="combo-arrow" tabindex="-1">&#9662;</button>
       </div>
-      <div class="nav-stack">
-        <button id="btnAddStudent" class="nav" title="Add a student">+</button>
-        <button id="btnRemoveStudent" class="nav" title="Remove current student">&#8722;</button>
-      </div>
+      <button type="button" id="btnSetPosition" class="nav" aria-label="Set page">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+        </svg>
+      </button>
+      <button id="btnAddStudent" class="nav" title="Add a student">+</button>
       <label for="studentGroupInput" aria-label="Group">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -2053,13 +2055,13 @@ function shuffleStudents() {
   updateNavButtons();
 }
 
-// Build the student popup's toolbar: move current up/down, sort A–Z, shuffle, sort by group,
+// Build the student popup's toolbar: move current up/down, remove current, sort A–Z, shuffle, sort by group,
 // sort by position in the PDF.
 function buildStudentToolbar() {
   const bar = document.createElement("div");
   bar.className = "combo-toolbar";
   const idx = students.indexOf(currentStudent);
-  const add = (btn, title, disabled, action) => {
+  const add = (btn, title, disabled, action, reopen = true) => {
     btn.type = "button";
     btn.title = title;
     btn.disabled = disabled;
@@ -2067,7 +2069,7 @@ function buildStudentToolbar() {
       e.preventDefault();              // keep focus in the input so the popup stays open
       if (btn.disabled) return;
       action();
-      openCombo(studentSelect);        // redraw the list (and this toolbar) in the new order
+      if (reopen) openCombo(studentSelect);  // redraw the list (and this toolbar) in the new order
     });
     bar.appendChild(btn);
   };
@@ -2085,6 +2087,10 @@ function buildStudentToolbar() {
   };
   add(move("up"),   "Move current student up",   idx <= 0,                    () => moveCurrentStudent(-1));
   add(move("down"), "Move current student down", idx < 0 || idx >= students.length - 1, () => moveCurrentStudent(1));
+  const del = tool("&#8722;");
+  del.classList.add("del");
+  // Close the list first, so it doesn't linger behind the confirm dialog.
+  add(del, "Remove current student", idx < 0, () => { closeCombo(); removeStudent(); }, false);
   add(tool("A–Z"),  "Sort students alphabetically", students.length < 2, sortStudents);
   add(tool('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
            'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
@@ -2765,7 +2771,6 @@ studentGroupArrow.addEventListener("mousedown", e => {
     ? closeCombo() : openCombo(studentGroupInput);
 });
 document.getElementById("btnAddStudent").addEventListener("click", addStudent);
-document.getElementById("btnRemoveStudent").addEventListener("click", removeStudent);
 
 // The page selector's own ▲/▼, and the arrow keys (and wheel, when focused) in it, go back/forward
 // like the PDF does (the browser's stepping, like its hidden spinner, goes the other way).
