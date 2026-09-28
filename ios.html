@@ -20,7 +20,7 @@
     --graded-fill: rgba(63, 166, 99, 0.25);   /* progress fill; translucent, so text stays legible */
     --ungraded: #f4c152;
     --ungraded-bg: #fffcf2;
-    --unset: #d97706;       /* a student without a PDF position yet (first pass) */
+    --unset: #d97706;       /* a student without a PDF position yet */
   }
   * { box-sizing: border-box; }
   html, body {
@@ -184,12 +184,20 @@
     -webkit-appearance: none; margin: 0;
   }
   #btnPageUp svg, #btnPageDown svg { width: 22px; height: 14px; display: block; }
-  /* The current student's page, inside the student box (see showStudentPage). */
+  .nav-stack #btnPagePrev, .nav-stack #btnPageNext { width: 52px; }      /* wider: easier to hit */
+  .nav-stack #btnPrev, .nav-stack #btnNext { width: auto; padding: 0 22px; }
+  /* The "no page yet" mark, inside the student box (see showStudentPage). */
   #studentPageTag { flex: 0 0 auto; align-self: center; margin: 0 6px 0 0; }
   #studentPageTag:empty { display: none; }
   #btnSetPosition { display: inline-flex; align-items: center; justify-content: center; }
   #btnSetPosition svg { width: 16px; height: 16px; display: block; }
-  #btnSetPosition.firstpass { color: var(--unset); }  /* some student has no position yet */
+  /* The next click sets a page (a new student, or one with no page yet). */
+  #btnSetPosition.unset { color: var(--unset); }
+  /* Pressed in: the current student's position follows the PDF as it scrolls. */
+  #btnSetPosition.recording {
+    background: #dbeafe; color: var(--accent); border-color: #93c5fd;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2);
+  }
   .fbicon { flex: 0 0 auto; width: 18px; height: 18px; color: var(--muted); }
   #questions {
     flex: 1 1 auto;
@@ -533,7 +541,6 @@
     flex: 0 0 auto;
   }
   button.nav:hover { background: #f0f2f5; }
-  #btnPrev, #btnNext { padding-left: 22px; padding-right: 22px; }
   button:disabled { opacity: 0.5; cursor: not-allowed; }
   select {
     font: inherit;
@@ -567,12 +574,6 @@
         </svg>
       </button>
       <span class="vsep"></span>
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-           stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-           aria-label="Page" style="flex:0 0 auto">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-        <polyline points="14 2 14 8 20 8"/>
-      </svg>
       <div class="nav-stack">
         <button id="btnPagePrev" class="nav" tabindex="-1" title="Previous page" disabled>&#9650;</button>
         <button id="btnPageNext" class="nav" tabindex="-1" title="Next page" disabled>&#9660;</button>
@@ -676,8 +677,17 @@
       </button>
     </div>
     <div id="studentBar">
-      <button id="btnPrev" class="nav" title="Previous student">&#9650;</button>
-      <button id="btnNext" class="nav" title="Next student">&#9660;</button>
+      <div class="nav-stack">
+        <button id="btnPrev" class="nav" title="Previous student">&#9650;</button>
+        <button id="btnNext" class="nav" title="Next student">&#9660;</button>
+      </div>
+      <button type="button" id="btnSetPosition" class="nav" aria-label="Set page">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+        </svg>
+      </button>
       <label for="studentSelect" aria-label="Student">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -691,14 +701,6 @@
         <span id="studentPageTag" class="combo-tag"></span>
         <button type="button" id="studentArrow" class="combo-arrow" tabindex="-1">&#9662;</button>
       </div>
-      <button type="button" id="btnSetPosition" class="nav" aria-label="Set page">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-          <polyline points="14 2 14 8 20 8"/>
-        </svg>
-      </button>
-      <button id="btnAddStudent" class="nav" title="Add a student">+</button>
       <label for="studentGroupInput" aria-label="Group">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -810,6 +812,7 @@ let commentsByStudent = {};    // { name: { title: commentString } }
 let feedbackByStudent = {};    // { name: globalFeedbackString }
 let scrollPosByStudent = {};   // { name: where the PDF was last left for them, as a fractional page
                                //   at the top of the pane (e.g. 3.25); also orders students by PDF }
+let recordingPosition = false; // the page button's toggle: the current student's position follows scrolling
 let groupByStudent = {};       // { name: student group } (absent = no group; unrelated to question groups)
 let currentStudent = "";       // current selected student name ("" if none)
 
@@ -1719,7 +1722,8 @@ function cloneScheme(scheme) {
   return scheme.map(q => ({ title: q.title, max: q.max, scores: q.scores.slice(), group: q.group || "" }));
 }
 
-// Add a single student by name (from the "+" button). New students inherit a copy
+// Add a single student by name (the name typed in the student box, on Enter or from the
+// page button, which also sets their page). New students inherit a copy
 // of the currently selected student's questions (the draft when none).
 function addStudent() {
   const name = (studentSelect.value || "").trim();
@@ -1933,7 +1937,7 @@ function saveCurrentStudent() {
     comments[input.dataset.key] = input.value.trim();
   });
   feedbackByStudent[currentStudent] = globalFeedback.value;
-  recordLivePosition();  // live mode: remember where the PDF was left for this student
+  recordPositionIfOn();  // while recording: remember where the PDF was left for this student
 }
 
 // Apply a student's stored selections to the radios and update the total.
@@ -1971,7 +1975,7 @@ function loadStudent(name) {
     else scrollPdfTo(target);
   }
   showStudentPage();
-  refreshPositionMode();
+  refreshPositionButton();
 }
 
 // Step to another student, wrapping around at both ends (past the last is the first). A
@@ -2174,6 +2178,7 @@ async function renderPdf(arrayBuffer, name) {
     btnSavePdf.disabled = true;
     btnRotatePage.disabled = true;
     btnDeletePage.disabled = true;
+    refreshPositionButton();      // no PDF: nothing to set or record
     btnPageUp.disabled = true;
     btnPageDown.disabled = true;
     pageInput.value = 1;
@@ -2228,7 +2233,7 @@ async function drawPages(targetPos) {
   pdfRendering = false;
   scrollPdfTo(pendingPdfPos);
   showStudentPage();
-  refreshPositionMode();
+  refreshPositionButton();
 }
 
 // Size `canvas` for one PDF.js page and render it, applying the page's own rotation plus
@@ -2294,7 +2299,7 @@ function deleteCurrentPage() {
   btnDeletePage.disabled = count < 2;
   goToPage(Math.min(n, count));
   showStudentPage();
-  refreshPositionMode();
+  refreshPositionButton();
 }
 
 // Download the PDF with the user's rotations, page order and deletions applied. pdf-lib only rewrites
@@ -2400,58 +2405,86 @@ function stepPdfPage(dir) {
   scrollPdfTo(Math.max(1, Math.min(pageCanvases.length, next)));
 }
 
-// Positions work in two modes:
-//   first pass — some student has no position yet: each gets one from the page button (the
-//                whole page in view, see setPositionToPageInView), and scrolling never
-//                moves anyone's;
-//   live       — every student has one: the current student's follows the PDF as it scrolls.
-function positionsComplete() {
-  return students.every(n => scrollPosByStudent[n] >= 1);
+// Positions are set and recorded with the page button (onSetPositionClick): a student with
+// no page yet gets the whole page in view, once; for a student with one, it toggles
+// recording, while which the position follows the PDF as it scrolls. Off, the PDF
+// scrolls freely and no position changes.
+function hasPage(name) {
+  return scrollPosByStudent[name] >= 1;
 }
 
-// Live mode only: record where the PDF is as the current student's position. Skipped with
+// While recording: store where the PDF is as the current student's position. Skipped with
 // no PDF, or mid-render, when the page offsets aren't final.
-function recordLivePosition() {
-  if (!pageCanvases.length || pdfRendering || !currentStudent || !positionsComplete()) return;
+function recordPositionIfOn() {
+  if (!recordingPosition || !pageCanvases.length || pdfRendering || !currentStudent) return;
   scrollPosByStudent[currentStudent] = pdfScrollPos();
-  showStudentPage();
 }
 
-// The page button: the current student's position becomes the whole page in view. No jump:
-// that page is already in view (in live mode, the next scroll takes over from there).
-function setPositionToPageInView() {
-  if (!pageCanvases.length || pdfRendering || !currentStudent) return;
-  scrollPosByStudent[currentStudent] = currentVisiblePage();
-  showStudentPage();
-  refreshPositionMode();
+// What a click on the page button would do, for the name in the student box:
+//   "create" — a new name: create that student, on the page in view;
+//   "set"    — the current student has no page yet: give them the page in view (once);
+//   "toggle" — the current student has one: start/stop recording;
+//   ""       — nothing (no PDF, mid-render, or an empty box).
+function setPositionAction() {
+  const name = studentSelect.value.trim();
+  if (!name || !pageCanvases.length || pdfRendering) return "";
+  if (students.indexOf(name) < 0) return "create";
+  if (name !== currentStudent) return "";
+  return hasPage(name) ? "toggle" : "set";
 }
 
-// A student's page as a tag: page icon + page number, or a crossed-out page while their
-// position isn't set (first pass). Used in the student list and in the student box.
+// The page button. Setting a page takes the whole page in view (no jump: it's already in
+// view) and never turns recording on; turning recording on stores the exact spot at once.
+function onSetPositionClick() {
+  const action = setPositionAction();
+  if (action === "create") {
+    addStudent();                                   // switches to the new student
+    scrollPosByStudent[currentStudent] = currentVisiblePage();
+  } else if (action === "set") {
+    scrollPosByStudent[currentStudent] = currentVisiblePage();
+  } else if (action === "toggle") {
+    recordingPosition = !recordingPosition;
+    recordPositionIfOn();
+  } else {
+    return;
+  }
+  showStudentPage();
+  refreshPositionButton();
+}
+
+// A student's "no page yet" tag (a crossed-out page); null once they have a page. Used in
+// the student list and in the student box.
 function studentPageTag(name) {
-  const pos = scrollPosByStudent[name];
-  return pos >= 1
-    ? { html: pageIcon() + Math.floor(pos), title: "page " + Math.floor(pos) }
-    : { html: pageIcon(true), title: "no page yet", cls: "unset" };
+  return hasPage(name) ? null : { html: pageIcon(true), title: "no page yet", cls: "unset" };
 }
 
-// Show the current student's page in the student box. Hidden with no student, and while
-// the box holds another name (a new one being typed for "+").
+// Show the "no page yet" tag in the student box: for the current student without a page,
+// and for a new name being typed (a student-to-be has no page). Nothing when empty.
 function showStudentPage() {
-  const show = currentStudent && studentSelect.value.trim() === currentStudent;
-  const tag = show ? studentPageTag(currentStudent) : null;
+  const name = studentSelect.value.trim();
+  const isNew = name && students.indexOf(name) < 0;
+  const tag = !name ? null : studentPageTag(isNew ? "" : name);   // "" never has a page
   studentPageTagEl.innerHTML = tag ? tag.html : "";
   studentPageTagEl.title = tag ? tag.title : "";
   studentPageTagEl.classList.toggle("unset", !!(tag && tag.cls));
 }
 
-// The page button turns amber during the first pass, and its tooltip says how many are
-// missing; in live mode it is disabled.
-function refreshPositionMode() {
-  const missing = students.filter(n => !(scrollPosByStudent[n] >= 1)).length;
-  btnSetPosition.classList.toggle("firstpass", missing > 0);
-  btnSetPosition.disabled = missing === 0;   // live mode: positions follow the PDF instead
-  btnSetPosition.title = "Set the page in view as this student's position";
+// The page button's look: pressed while recording, amber when the next click sets a page,
+// disabled when it can't do anything; its tooltip says what the next click does.
+function refreshPositionButton() {
+  const action = setPositionAction();
+  if (!currentStudent || !hasPage(currentStudent)) recordingPosition = false;
+  btnSetPosition.disabled = !action;
+  btnSetPosition.classList.toggle("unset", action === "create" || action === "set");
+  const on = recordingPosition && action === "toggle";
+  btnSetPosition.classList.toggle("recording", on);
+  btnSetPosition.setAttribute("aria-pressed", on ? "true" : "false");
+  btnSetPosition.title =
+    action === "create" ? "Create " + studentSelect.value.trim() + " and set their page to the page in view" :
+    action === "set"    ? "Set this student's page to the page in view" :
+    on                  ? "Stop recording this student's position" :
+    action === "toggle" ? "Record this student's position while scrolling" :
+                          "Set a student's page (open a PDF first)";
 }
 
 // A page icon (SVG markup), optionally crossed out.
@@ -2795,7 +2828,7 @@ studentSelect._comboItemClass = (name) =>
 studentSelect._comboToolbar = buildStudentToolbar;
 studentSelect._comboItemNote = (name) => groupByStudent[name] || "";  // greyed group after the name
 studentSelect._comboItemTag = studentPageTag;   // each student's page, or a crossed-out page
-btnSetPosition.addEventListener("click", setPositionToPageInView);
+btnSetPosition.addEventListener("click", onSetPositionClick);
 studentSelect._comboItemFill = studentFraction;                       // background = grading progress
 studentSelect.addEventListener("focus", () => openCombo(studentSelect));
 studentArrow.addEventListener("mousedown", e => {
@@ -2814,7 +2847,14 @@ studentGroupArrow.addEventListener("mousedown", e => {
   (activeComboInput === studentGroupInput && comboPopup.classList.contains("open"))
     ? closeCombo() : openCombo(studentGroupInput);
 });
-document.getElementById("btnAddStudent").addEventListener("click", addStudent);
+// Enter in the student box creates the typed student (with no page; the page button
+// creates one on the page in view instead), or switches to them if they exist.
+studentSelect.addEventListener("keydown", e => {
+  if (e.key !== "Enter" || !studentSelect.value.trim()) return;
+  e.preventDefault();
+  closeCombo();
+  addStudent();
+});
 
 // The page selector's own ▲/▼, and the arrow keys (and wheel, when focused) in it, go back/forward
 // like the PDF does (the browser's stepping, like its hidden spinner, goes the other way).
@@ -2837,8 +2877,12 @@ const onButtonPress = (btn, action) => btn.addEventListener("mousedown", e => {
 onButtonPress(btnPagePrev, () => stepPdfPage(-1));
 onButtonPress(btnPageNext, () => stepPdfPage(1));
 invertStepping(pageInput, stepPdfPage);
-// The student box's page tag hides while a new name is typed (see showStudentPage).
-studentSelect.addEventListener("input", showStudentPage);
+// Typing in the student box changes its "no page yet" tag (a new name has no page) and
+// what the page button would do (create that student).
+studentSelect.addEventListener("input", () => {
+  showStudentPage();
+  refreshPositionButton();
+});
 // Pasting several lines (a column copied from a spreadsheet) adds every name as a student.
 // Only the first cell of each row counts; a single line pastes into the box as usual.
 studentSelect.addEventListener("paste", e => {
@@ -3007,7 +3051,7 @@ pdfPane.addEventListener("scroll", () => {
     pageSyncRaf = null;
     if (pageCanvases.length === 0) return;
     showPdfPosition();
-    recordLivePosition();
+    recordPositionIfOn();
   });
 });
 
@@ -3054,6 +3098,7 @@ divider.addEventListener("pointerup", endDrag);
 divider.addEventListener("pointercancel", endDrag);
 
 updateNavButtons();
+refreshPositionButton();
 </script>
 </body>
 </html>
