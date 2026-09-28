@@ -1974,14 +1974,15 @@ function loadStudent(name) {
   refreshPositionMode();
 }
 
-// Step to another student. Clamped at both ends, and a move that would land on the student
-// already shown does nothing at all — the ▲/▼ buttons are disabled there, but the
-// middle-click shortcut is not, and re-selecting would re-render and re-jump the PDF.
+// Step to another student, wrapping around at both ends (past the last is the first). A
+// move that would land on the student already shown (a single student) does nothing at
+// all — the ▲/▼ buttons are disabled then, but the middle-click shortcut is not, and
+// re-selecting would re-render and re-jump the PDF.
 function moveStudent(delta) {
   if (students.length === 0) return;
   const idx = students.indexOf(currentStudent);
   if (idx < 0) { switchToStudent(students[0]); return; }  // nothing selected -> the first
-  const next = Math.min(students.length - 1, Math.max(0, idx + delta));
+  const next = ((idx + delta) % students.length + students.length) % students.length;
   if (students[next] === currentStudent) return;
   switchToStudent(students[next]);
 }
@@ -2118,10 +2119,11 @@ function buildStudentToolbar() {
   return bar;
 }
 
+// Stepping wraps around (see moveStudent), so ▲/▼ are only disabled with nowhere else to go.
 function updateNavButtons() {
-  const idx = students.indexOf(currentStudent);
-  document.getElementById("btnPrev").disabled = (students.length === 0 || idx <= 0);
-  document.getElementById("btnNext").disabled = (students.length === 0 || idx >= students.length - 1);
+  const none = students.length < 2;
+  document.getElementById("btnPrev").disabled = none;
+  document.getElementById("btnNext").disabled = none;
 }
 
 // Minimal CSS.escape fallback for use in attribute selectors.
@@ -2905,9 +2907,10 @@ questionsEl.addEventListener("pointerdown", e => {
   selectOption(input, true);
 });
 
-// Middle-click inside the question list or the student bar steps to the next student.
-// Preventing the default on mousedown is what suppresses the browser's autoscroll, so the
-// press is swallowed even when there is no next student to go to (see moveStudent).
+// Middle-click inside the question list or the student bar steps to the next student
+// (from the last, back to the first). Preventing the default on mousedown is what
+// suppresses the browser's autoscroll, so the press is swallowed even when there is no
+// other student to go to (see moveStudent).
 function nextStudentOnMiddleClick(e) {
   if (e.button !== 1) return;
   e.preventDefault();
