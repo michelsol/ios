@@ -143,6 +143,9 @@
     justify-content: center;
   }
   #toolbar button svg { width: 20px; height: 20px; display: block; }
+  /* The zoom control rides along at the end of the row, sized by its own buttons. */
+  #gradeZoomCtl { flex: 0 0 auto; }
+  #toolbar .zoomctl button { flex: 0 0 auto; }
   #studentBar {
     flex: 0 0 auto;
     display: flex;
@@ -224,6 +227,8 @@
      no second class is needed (.ungraded is set in refreshCheckedStyles). */
   .question.ungraded       { border-left-color: var(--ungraded); background: var(--ungraded-bg); }
   .question:not(.ungraded) { border-left-color: var(--graded);   background: var(--graded-bg); }
+  /* Being edited: neutral, since the row shows the question itself and not its grade. */
+  .question.editing        { border-left-color: var(--accent);   background: #f5f8ff; }
   .combo {
     flex: 1 1 220px;
     min-width: 140px;
@@ -235,7 +240,9 @@
     overflow: hidden;
   }
   .combo:focus-within { border-color: var(--accent); }
-  .qcomment {
+  /* The text box of a combo. The edit row's group box is one too, but must not be a
+     ".qcomment" — that class is what saveCurrentStudent() collects comments from. */
+  .qcomment, .qedit-group {
     flex: 1 1 auto;
     min-width: 0;
     font: inherit;
@@ -244,7 +251,7 @@
     background: transparent;
     color: var(--text);
   }
-  .qcomment:focus { outline: none; }
+  .qcomment:focus, .qedit-group:focus { outline: none; }
   .combo-arrow {
     flex: 0 0 auto;
     border: 0;
@@ -306,6 +313,10 @@
   .combo-item.ungraded { border-left-color: var(--ungraded); background: var(--ungraded-bg); }
   .combo-item:hover, .combo-item.active { background: #eaf1ff; }
   .combo-note { margin-left: 8px; color: var(--muted); font-weight: 400; } /* e.g. a student's group */
+  .combo-score {                       /* e.g. a student's running total */
+    margin-left: 8px; color: var(--muted); font-weight: 400;
+    white-space: nowrap; font-variant-numeric: tabular-nums;
+  }
   /* Progress fill: how much of this student is graded. Grows from the left, under the text. */
   .combo-fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--graded-fill); }
   .combo-tag {                         /* e.g. a student's page */
@@ -314,7 +325,7 @@
   }
   .combo-tag svg { width: 13px; height: 13px; flex: 0 0 auto; }
   .combo-tag.unset { color: var(--unset); }
-  .combo-label, .combo-note, .combo-tag { position: relative; }   /* above the fill */
+  .combo-label, .combo-note, .combo-score, .combo-tag { position: relative; } /* above the fill */
   .combo-label { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
   /* Per-row controls (the comment list uses them to reorder and remove suggestions). */
   .combo-actions { position: relative; flex: 0 0 auto; display: flex; align-items: center; gap: 2px; }
@@ -356,12 +367,6 @@
     flex: 0 0 auto;
     font-weight: 600;
     font-size: 14px;
-  }
-  .question .qtitle .qmax {
-    color: var(--muted);
-    font-weight: 400;
-    font-size: 12px;
-    margin-left: 6px;
   }
   .options {
     flex: 0 1 auto;
@@ -446,18 +451,49 @@
     padding-top: 12px;
     border-top: 1px solid var(--border);
   }
-  #addQuestionBar input {
+  /* All question customization happens in edit mode, so adding is just one wide "+". */
+  #addQuestionBar button { flex: 1 1 auto; }
+  /* A question row opened for editing: its definition (title, scores, group) instead of
+     its options, plus the controls that only belong here. */
+  .question.editing .qedit-title,
+  .question.editing .qedit-scores {
     font: inherit;
     padding: 7px 8px;
     border: 1px solid var(--border);
     border-radius: 6px;
     background: #fff;
     color: var(--text);
+    min-width: 0;
   }
-  #aqGroupCombo { flex: 2 1 110px; min-width: 0; }
-  #aqTitle { flex: 2 1 120px; min-width: 0; }
-  #aqScores { flex: 3 1 160px; min-width: 0; }
-  #addQuestionBar button { flex: 0 0 auto; }
+  .question.editing .qedit-title  { flex: 2 1 120px; }
+  .question.editing .qedit-scores { flex: 3 1 160px; }
+  .question.editing .qedit-combo  { flex: 2 1 110px; min-width: 0; }
+  .qedit-invalid, .qedit-invalid:focus {   /* rejected on apply: fix it or discard the row */
+    border-color: #b91c1c !important;
+    outline: 1px solid #b91c1c;
+  }
+  /* The edited row's two icon toggles: the pencil, and "applies to all students". Both are
+     raised while off and pushed in while on, like a score key. */
+  .qedit, .forall-toggle {
+    flex: 0 0 auto;
+    align-self: center;
+    display: flex; align-items: center; justify-content: center;
+    width: 28px; height: 26px; padding: 0;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .qedit svg { width: 15px; height: 15px; }
+  .forall-toggle svg { width: 17px; height: 17px; }
+  .qedit:hover, .forall-toggle:hover { color: var(--accent); border-color: #c7d7f5; background: #f0f5ff; }
+  .qedit.on, .forall-toggle.on {         /* pressed in, like a chosen score key */
+    color: var(--accent);
+    border-color: var(--accent);
+    background: #e4edff;
+    box-shadow: inset 0 2px 3px rgba(0,0,0,0.18);
+  }
   /* Group separator inside the question list: a labelled line carrying the subtotal. */
   .qgroup {
     display: flex;
@@ -475,8 +511,10 @@
     font-size: 13px; font-weight: 700; color: var(--muted);
     white-space: nowrap; font-variant-numeric: tabular-nums;
   }
+  /* The list's last row (see renderQuestions): a grey band bleeding through #questions'
+     16px padding, so it still spans the pane. */
   #totalBar {
-    flex: 0 0 auto;
+    margin: 10px -16px 0;
     display: flex;
     align-items: center;
     gap: 12px;
@@ -508,15 +546,6 @@
   }
   .zoomctl button:hover { background: #f0f2f5; }
   .zoomctl .lens { width: 16px; height: 16px; display: block; }
-  #forAllLabel {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    color: var(--muted);
-    cursor: pointer;
-  }
-  #forAllLabel svg { width: 20px; height: 20px; display: block; }
-  #forAllLabel input { cursor: pointer; margin: 0; }
 
   /* ---- Shared controls ---- */
   button {
@@ -675,6 +704,17 @@
           <rect x="6" y="14" width="12" height="8"/>
         </svg>
       </button>
+      <!-- Grading zoom: the buttons are stacked, so it costs one button's width. -->
+      <span class="zoomctl" id="gradeZoomCtl">
+        <svg class="lens" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <span class="nav-stack">
+          <button id="btnGradeZoomIn" class="nav" title="Zoom in grading">+</button>
+          <button id="btnGradeZoomOut" class="nav" title="Zoom out grading">&#8722;</button>
+        </span>
+      </span>
     </div>
     <div id="studentBar">
       <div class="nav-stack">
@@ -717,6 +757,23 @@
     </div>
     <div id="questions">
       <!-- <div id="questionsEmpty">No questions yet.<br>Click "Load" to open a file, or add a question below.</div> -->
+      <div id="totalBar">
+        <span class="totalLabel"><span id="totalValue">0</span><span class="max" id="totalMax"> / 0</span></span>
+        <span class="vsep"></span>
+        <svg class="fbicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          <line x1="8" y1="9" x2="16" y2="9"/><line x1="8" y1="13" x2="13" y2="13"/>
+        </svg>
+        <div class="combo" id="feedbackCombo">
+          <input type="text" id="globalFeedback" class="qcomment" autocomplete="off" placeholder="">
+          <button type="button" id="feedbackAdd" class="combo-add" tabindex="-1"
+                  title="Add this feedback to the suggestion list">+</button>
+          <button type="button" id="feedbackClear" class="combo-clear" tabindex="-1"
+                  title="Clear this feedback">&times;</button>
+          <button type="button" id="feedbackArrow" class="combo-arrow" tabindex="-1">&#9662;</button>
+        </div>
+      </div>
       <div id="addQuestionBar">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
              stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
@@ -725,50 +782,8 @@
           <text x="12" y="13" text-anchor="middle" stroke="none" fill="currentColor"
                 font-size="9" font-weight="bold" font-family="sans-serif">?</text>
         </svg>
-        <input type="text" id="aqTitle" placeholder="1. (a)" title="Question title">
-        <input type="text" id="aqScores" placeholder="0 0.5 1 1.5 2" title="Possible scores">
-        <div class="combo" id="aqGroupCombo" title="Question group (leave blank for none)">
-          <input type="text" id="aqGroup" class="qcomment" autocomplete="off" placeholder="Ex. 1">
-          <button type="button" id="aqGroupArrow" class="combo-arrow" tabindex="-1">&#9662;</button>
-        </div>
         <button id="aqAdd" aria-label="Add question" title="Add question">+</button>
       </div>
-    </div>
-    <div id="totalBar">
-      <span class="totalLabel"><span id="totalValue">0</span><span class="max" id="totalMax"> / 0</span></span>
-      <span class="vsep"></span>
-      <svg class="fbicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-        <line x1="8" y1="9" x2="16" y2="9"/><line x1="8" y1="13" x2="13" y2="13"/>
-      </svg>
-      <div class="combo" id="feedbackCombo">
-        <input type="text" id="globalFeedback" class="qcomment" autocomplete="off" placeholder="">
-        <button type="button" id="feedbackAdd" class="combo-add" tabindex="-1"
-                title="Add this feedback to the suggestion list">+</button>
-        <button type="button" id="feedbackClear" class="combo-clear" tabindex="-1"
-                title="Clear this feedback">&times;</button>
-        <button type="button" id="feedbackArrow" class="combo-arrow" tabindex="-1">&#9662;</button>
-      </div>
-      <span class="zoomctl">
-        <svg class="lens" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-        </svg>
-        <button id="btnGradeZoomOut" title="Zoom out grading">&#8722;</button>
-        <span id="gradeZoomLabel">100%</span>
-        <button id="btnGradeZoomIn" title="Zoom in grading">+</button>
-      </span>
-      <label id="forAllLabel" title="Apply to all students">
-        <input type="checkbox" id="forAllCheck" checked>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <circle cx="9" cy="7" r="4"/>
-          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-          <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-        </svg>
-      </label>
     </div>
   </div>
 </div>
@@ -805,7 +820,12 @@ if (window.pdfjsLib) {
 let schemeByStudent = {};      // { name: [{ title, max, scores:[..], group }, ...] }
 let schemeQuestions = [];      // alias of the current student's scheme (or a draft)
 let questionGroups = [];       // distinct named groups in use across all students (combobox list)
-let forAll = true;             // "for all" switch: add/remove question affects all students
+// "For all" switch (the checkbox on the row being edited): decides whether adding,
+// editing, moving or removing a question affects every student or only the current one.
+let forAll = true;
+// Which question row is open for editing (UI-only, never saved). At most one at a time.
+let editingKey = null;         // qKey of the question being edited; null = none
+let editingDraft = null;       // { title, scores, group } of a question not created yet, or null
 let students = [];             // ["e1", "e2", ...]
 let gradesByStudent = {};      // { name: { title: selectedScore } }
 let commentsByStudent = {};    // { name: { title: commentString } }
@@ -850,6 +870,7 @@ const totalValueEl  = document.getElementById("totalValue");
 const totalMaxEl    = document.getElementById("totalMax");
 const comboPopup    = document.getElementById("comboPopup");
 const addQuestionBar = document.getElementById("addQuestionBar");
+const totalBar      = document.getElementById("totalBar");
 const globalFeedback = document.getElementById("globalFeedback");
 const feedbackAdd   = document.getElementById("feedbackAdd");
 const feedbackClear = document.getElementById("feedbackClear");
@@ -975,12 +996,14 @@ function toNum(s) {
   return parseFloat(s);
 }
 
-// Parse a possible-scores string ("0 0.25 0.5") into a sorted, deduped number list.
+// Parse a possible-scores string ("0 0.25 0.5") into a deduped number list, kept in the
+// order it was typed: the score buttons are laid out in that order, so the teacher decides
+// it. The max is therefore the largest entry, not the last one.
 function parseScoreList(text) {
   return Array.from(new Set(
     (text || "").trim().split(/[\s;]+/).filter(Boolean)
       .map(s => toNum(s)).filter(n => !isNaN(n))
-  )).sort((a, b) => a - b);
+  ));
 }
 
 // The question scheme array for a student. Creates an empty array on first use.
@@ -1062,39 +1085,123 @@ function recomputeGroups() {
   questionGroups = list;
 }
 
-// Add a question from the inline form, then re-render. The "for all" switch
-// decides whether it applies to every student or only the current one.
-function addQuestion() {
-  const aqGroup = document.getElementById("aqGroup");
-  const aqTitle = document.getElementById("aqTitle");
-  const aqScores = document.getElementById("aqScores");
+// Rewrite one question in one student's scheme, in place (so it keeps its position).
+// `next` is { title, max, scores, group }. When the key changes, the stored grade and
+// comment move with it, and a grade that is no longer one of the options is dropped.
+function editQuestionInScheme(name, oldKey, next) {
+  const scheme = schemeFor(name);
+  const q = scheme.find(x => qKey(x) === oldKey);
+  if (!q) return;
+  q.title = next.title;
+  q.group = next.group;
+  q.scores = next.scores.slice();
+  q.max = next.max;
+  const newKey = qKey(q);
+  if (!name) return;
+  const grades = gradesByStudent[name];
+  const comments = commentsByStudent[name];
+  if (newKey !== oldKey) {
+    if (grades && oldKey in grades) { grades[newKey] = grades[oldKey]; delete grades[oldKey]; }
+    if (comments && oldKey in comments) { comments[newKey] = comments[oldKey]; delete comments[oldKey]; }
+  }
+  // A grade the new options can no longer express would count in the total while showing
+  // no pressed key, and clicking can't clear it — so it goes.
+  if (grades && isGraded(grades[newKey]) && !next.scores.some(s => s === grades[newKey]))
+    delete grades[newKey];
+}
 
-  const group = aqGroup.value.trim();
-  const title = aqTitle.value.trim();
-  if (!title) { alert("Enter a question title."); aqTitle.focus(); return; }
-  if (!forAll && !currentStudent) {
-    alert('Select or add a student first, or check "for all" to add a question to every student.');
-    return;
+// The inputs of the row currently in edit mode (they exist only while one is open).
+function editFields() {
+  const row = questionsEl.querySelector(".question.editing");
+  if (!row) return null;
+  return {
+    title: row.querySelector(".qedit-title"),
+    scores: row.querySelector(".qedit-scores"),
+    group: row.querySelector(".qedit-group"),
+  };
+}
+
+// Mark a field as rejected (red) and put the cursor in it. Cleared by the next render.
+function rejectField(input) {
+  if (!input) return;
+  input.classList.add("qedit-invalid");
+  input.focus();
+  input.select();
+}
+
+// Apply the open edit row and close it. Returns the question's (possibly new) key, `false`
+// when a field is invalid — the row then stays open — and null when there was nothing to
+// apply. An untouched new row is discarded rather than rejected.
+function commitEdit() {
+  const f = editFields();
+  if (!f) { editingKey = null; editingDraft = null; return null; }
+  const title = f.title.value.trim();
+  const group = f.group.value.trim();
+  const scoreText = f.scores.value.trim();
+  const isDraft = !!editingDraft;
+
+  if (isDraft && !title && !scoreText) { cancelDraft(); return null; } // never filled in
+  if (!title) { rejectField(f.title); return false; }
+  // "Only this student" with no student selected has nothing to apply to (with no student
+  // at all, the shared draft scheme is the target and this doesn't arise).
+  if (!forAll && !currentStudent && students.length > 0) { rejectField(f.title); return false; }
+  const key = (group ? group + QKEY_SEP : "") + title;
+  if (schemeQuestions.some(q => qKey(q) !== editingKey && qKey(q) === key)) {
+    rejectField(f.title); return false;          // that group already has this title
   }
-  if (schemeQuestions.some(q => q.title === title && (q.group || "") === group)) {
-    alert('A question titled "' + title + '" already exists in this group.'); aqTitle.focus(); return;
-  }
-  // Whitespace/";"-separated, dot decimals; deduped and sorted ascending.
-  const scores = parseScoreList(aqScores.value);
-  if (scores.length === 0) { alert("Enter at least one numeric score (e.g. 0 0.5 1)."); aqScores.focus(); return; }
-  const max = scores[scores.length - 1]; // max = highest possible score
+  const scores = parseScoreList(scoreText);
+  if (scores.length === 0) { rejectField(f.scores); return false; }
+  const max = Math.max(...scores);
 
   saveCurrentStudent();
+  const apply = isDraft
+    ? (name) => addQuestionToStudent(name, title, max, scores, group)
+    : (name) => editQuestionInScheme(name, editingKey, { title, max, scores, group });
   if (forAll) {
-    if (students.length === 0) addQuestionToStudent("", title, max, scores, group); // draft
-    else for (const name of students) addQuestionToStudent(name, title, max, scores, group);
+    if (students.length === 0) apply("");        // draft scheme, before any student exists
+    else for (const name of students) apply(name);
   } else {
-    addQuestionToStudent(currentStudent, title, max, scores, group);
+    apply(currentStudent);
   }
+  editingKey = null;
+  editingDraft = null;
   recomputeGroups();
-  aqTitle.value = ""; aqScores.value = ""; // keep the group, to add several questions to it quickly
   renderQuestions();
-  aqTitle.focus();
+  return key;
+}
+
+// Open a question for editing. Whatever was open is applied first; if that fails, the
+// rejected row stays open and this one does not.
+function beginEdit(key) {
+  if (commitEdit() === false) return;
+  editingKey = key;
+  editingDraft = null;
+  renderQuestions();
+  const f = editFields();
+  if (f) { f.title.focus(); f.title.select(); }
+}
+
+// Append a new question row in edit mode. It borrows the last question's group and score
+// list (a section usually shares one scale); nothing is created until it is applied.
+function startNewQuestion() {
+  if (commitEdit() === false) return;
+  const last = schemeQuestions[schemeQuestions.length - 1];
+  editingKey = null;
+  editingDraft = {
+    title: "",
+    scores: last ? last.scores.slice() : [],
+    group: last ? (last.group || "") : "",
+  };
+  renderQuestions();
+  const f = editFields();
+  if (f) f.title.focus();
+}
+
+// Drop the uncreated row (its ✕, or Escape).
+function cancelDraft() {
+  editingDraft = null;
+  editingKey = null;
+  renderQuestions();
 }
 
 // Swap a question (by key) with its nearest same-group neighbour within one student's
@@ -1245,20 +1352,115 @@ function groupedScheme(scheme) {
   return groups;
 }
 
+// A fresh pencil icon node, for the edit toggle.
+function editIcon() {
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "2");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+  svg.setAttribute("aria-hidden", "true");
+  svg.innerHTML =
+    '<path d="M12 20h9"/>' +
+    '<path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>';
+  return svg;
+}
+
+// The ▲▼ pair of a question row (only rendered while it is being edited).
+function buildQuestionMoves(key, disableUp, disableDown) {
+  const wrap = document.createElement("div");
+  wrap.className = "qmove-group";
+  ["up", "down"].forEach(dir => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "qmove";
+    btn.title = "Move question " + dir;
+    if (key !== null) btn.dataset.key = key;
+    btn.dataset.dir = dir;
+    btn.disabled = dir === "up" ? disableUp : disableDown;
+    wrap.appendChild(btn);
+  });
+  return wrap;
+}
+
 // Build one question row. disableUp/disableDown reflect the question's position
-// within its own group (moves stay inside the group).
-function buildQuestionBlock(q, disableUp, disableDown) {
-    const key = qKey(q); // identifier for the DOM/state; the row still displays q.title
+// within its own group (moves stay inside the group). `q` is a scheme question, or
+// `editingDraft` when this is the not-yet-created row (isDraft), which is always edited.
+function buildQuestionBlock(q, disableUp, disableDown, isDraft) {
+    const key = isDraft ? null : qKey(q); // identifier for the DOM/state; the row displays q.title
+    const editing = isDraft || (editingKey !== null && key === editingKey);
     const block = document.createElement("div");
-    block.className = "question";
+    block.className = "question" + (editing ? " editing" : "");
+    if (isDraft) block.dataset.draft = "1";
+
+    // ---- Edit mode: the question's own definition, not its grade ----
+    // Same three fields the add bar used to carry, then the controls that only make
+    // sense here: reorder, remove, and the edit toggle that applies everything.
+    if (editing) {
+      const tinput = document.createElement("input");
+      tinput.type = "text";
+      tinput.className = "qedit-title";
+      tinput.placeholder = "1. (a)";
+      tinput.title = "Question title";
+      tinput.value = q.title || "";
+      block.appendChild(tinput);
+
+      const sinput = document.createElement("input");
+      sinput.type = "text";
+      sinput.className = "qedit-scores";
+      sinput.placeholder = "0 0.5 1 1.5 2";
+      sinput.title = "Possible scores, in the order they should appear";
+      sinput.value = (q.scores || []).map(fmt).join(" ");
+      block.appendChild(sinput);
+
+      const gcombo = document.createElement("div");
+      gcombo.className = "combo qedit-combo";
+      gcombo.title = "Question group (leave blank for none)";
+      const ginput = document.createElement("input");
+      ginput.type = "text";
+      ginput.className = "qedit-group";
+      ginput.placeholder = "Ex. 1";
+      ginput.autocomplete = "off";
+      ginput.value = q.group || "";
+      ginput._comboItems = () => questionGroups;
+      ginput._comboSelect = (name) => { ginput.value = name; };
+      ginput.addEventListener("focus", () => openCombo(ginput));
+      const garrow = document.createElement("button");
+      garrow.type = "button";
+      garrow.className = "combo-arrow";
+      garrow.tabIndex = -1;
+      garrow.textContent = "▾";
+      garrow.addEventListener("mousedown", e => {
+        e.preventDefault(); // keep focus where it is
+        (activeComboInput === ginput && comboPopup.classList.contains("open"))
+          ? closeCombo() : openCombo(ginput);
+      });
+      gcombo.appendChild(ginput);
+      gcombo.appendChild(garrow);
+      block.appendChild(gcombo);
+
+      // A draft sits at the end of the list and has nothing to swap with yet.
+      block.appendChild(buildQuestionMoves(key, isDraft || disableUp, isDraft || disableDown));
+
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "qremove";
+      remove.title = isDraft ? "Discard this question" : "Remove question";
+      remove.textContent = "✕";
+      if (key !== null) remove.dataset.key = key;
+      block.appendChild(remove);
+
+      block.appendChild(buildForAllToggle()); // scope of everything this row applies
+      block.appendChild(buildEditToggle(key, true));
+      return block;
+    }
 
     const title = document.createElement("div");
     title.className = "qtitle";
     title.textContent = q.title;
-    const maxSpan = document.createElement("span");
-    maxSpan.className = "qmax";
-    maxSpan.textContent = "/ " + fmt(q.max);
-    title.appendChild(maxSpan);
     block.appendChild(title);
 
     const options = document.createElement("div");
@@ -1325,42 +1527,62 @@ function buildQuestionBlock(q, disableUp, disableDown) {
     combo.appendChild(clearBtn);
     block.appendChild(combo);
 
-    const qmoveGroup = document.createElement("div");
-    qmoveGroup.className = "qmove-group";
-
-    const moveUp = document.createElement("button");
-    moveUp.type = "button";
-    moveUp.className = "qmove";
-    moveUp.title = "Move question up";
-    moveUp.dataset.key = key;
-    moveUp.dataset.dir = "up";
-    moveUp.disabled = disableUp;
-    qmoveGroup.appendChild(moveUp);
-
-    const moveDown = document.createElement("button");
-    moveDown.type = "button";
-    moveDown.className = "qmove";
-    moveDown.title = "Move question down";
-    moveDown.dataset.key = key;
-    moveDown.dataset.dir = "down";
-    moveDown.disabled = disableDown;
-    qmoveGroup.appendChild(moveDown);
-
-    block.appendChild(qmoveGroup);
-
-    const remove = document.createElement("button");
-    remove.type = "button";
-    remove.className = "qremove";
-    remove.title = "Remove question";
-    remove.textContent = "✕";
-    remove.dataset.key = key;
-    block.appendChild(remove);
+    // Reordering and removing live in edit mode; grading rows stay uncluttered.
+    block.appendChild(buildEditToggle(key, false));
 
     return block;
 }
 
+// The "apply to all students" switch, rebuilt with the row it belongs to — it only has a
+// meaning while a question is being edited. `forAll` is the state; the icon mirrors it,
+// pressed in like the pencil next to it. Toggling only touches the button, so whatever is
+// half-typed in the row's fields stays put.
+function buildForAllToggle() {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  const paint = () => {
+    btn.className = "forall-toggle" + (forAll ? " on" : "");
+    btn.title = forAll ? "Applies to all students" : "Applies to this student only";
+  };
+  paint();
+  btn.addEventListener("click", () => { forAll = !forAll; paint(); });
+
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "2");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+  svg.setAttribute("aria-hidden", "true");
+  svg.innerHTML =
+    '<circle cx="9" cy="7" r="4"/>' +
+    '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>' +
+    '<path d="M23 21v-2a4 4 0 0 0-3-3.87"/>' +
+    '<path d="M16 3.13a4 4 0 0 1 0 7.75"/>';
+  btn.appendChild(svg);
+
+  return btn;
+}
+
+// The pencil toggle that opens a question for editing (and, pressed, applies it).
+function buildEditToggle(key, on) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "qedit" + (on ? " on" : "");
+  btn.title = on ? "Apply changes" : "Edit question";
+  if (key !== null) btn.dataset.key = key;
+  btn.appendChild(editIcon());
+  return btn;
+}
+
 function renderQuestions() {
+  // A popup anchored to a row we are about to destroy would be left pointing at nothing.
+  if (activeComboInput && questionsEl.contains(activeComboInput)) closeCombo();
   questionsEl.innerHTML = "";
+  // A question that was removed (or that belongs to another student) can't stay open.
+  if (editingKey !== null && !schemeQuestions.some(q => qKey(q) === editingKey)) editingKey = null;
   if (schemeQuestions.length === 0) {
     const empty = document.createElement("div");
     empty.id = "questionsEmpty";
@@ -1414,12 +1636,16 @@ function renderQuestions() {
         questionsEl.appendChild(sep);
       }
       grp.questions.forEach((q, idx) => {
-        questionsEl.appendChild(buildQuestionBlock(q, idx === 0, idx === grp.questions.length - 1));
+        questionsEl.appendChild(buildQuestionBlock(q, idx === 0, idx === grp.questions.length - 1, false));
       });
     });
   }
 
-  questionsEl.appendChild(addQuestionBar); // form sits at the bottom of the list
+  // The question being created: a row in edit mode that no scheme holds yet.
+  if (editingDraft) questionsEl.appendChild(buildQuestionBlock(editingDraft, true, true, true));
+
+  questionsEl.appendChild(totalBar);       // total + feedback: the list's last row
+  questionsEl.appendChild(addQuestionBar); // the "+" sits at the bottom of the list
   // Always applies the current student — name, PDF position, feedback, grades and totals
   // (with an empty scheme, just the first three) — so selecting a student works before
   // any question exists.
@@ -1476,6 +1702,16 @@ function openCombo(input) {
       span.textContent = note;
       item.appendChild(span);
       item.title = s + " · " + note;
+    }
+    // Optional score after the note (the student list shows each student's running total
+    // over the questions graded so far).
+    const score = input._comboItemScore ? input._comboItemScore(s) : "";
+    if (score) {
+      const span = document.createElement("span");
+      span.className = "combo-score";
+      span.textContent = score;
+      item.appendChild(span);
+      item.title += " · " + score;
     }
     // Optional small tag after that, as markup plus a tooltip text (the student list shows
     // each student's page as an icon).
@@ -1598,6 +1834,7 @@ function refreshCheckedStyles() {
   });
   const grades = (currentStudent && gradesByStudent[currentStudent]) || {};
   questionsEl.querySelectorAll(".question").forEach(block => {
+    if (block.classList.contains("editing")) return; // shows its definition, not its grade
     const input = block.querySelector(".opt input");
     block.classList.toggle("ungraded", !(input && isGraded(grades[input.dataset.key])));
   });
@@ -1711,6 +1948,8 @@ function recomputeTotal() {
 // of questions, so the question DOM must be rebuilt, not just re-applied).
 function switchToStudent(name) {
   saveCurrentStudent();
+  editingKey = null;          // an open edit row belongs to the student it was opened on
+  editingDraft = null;
   currentStudent = name || "";
   schemeQuestions = schemeFor(currentStudent);
   renderQuestions();          // its tail calls loadStudent() to apply stored values
@@ -1800,7 +2039,6 @@ let gradeZoom = 1.0;
 function zoomGrade(factor) {
   gradeZoom = Math.min(2, Math.max(0.5, gradeZoom * factor));
   questionsEl.style.zoom = gradeZoom;
-  document.getElementById("gradeZoomLabel").textContent = Math.round(gradeZoom * 100) + "%";
 }
 
 // Read an .ods save file, collect its sheets by name (as arrays of rows),
@@ -1877,7 +2115,7 @@ function loadWorkbook(s) {
       let scores = parseScoreList(scoreVals[h]);
       if (scores.length === 0) scores = parseScoreList(gradeVals[h]);
       if (scores.length === 0) scores = [0];
-      return { title, max: scores[scores.length - 1], scores, group, _h: h };
+      return { title, max: Math.max(...scores), scores, group, _h: h };
     });
   };
 
@@ -1914,6 +2152,8 @@ function loadWorkbook(s) {
   }
 
   recomputeGroups();
+  editingKey = null;          // nothing from the previous file stays open
+  editingDraft = null;
   currentStudent = students.length ? students[0] : "";
   schemeQuestions = schemeFor(currentStudent);
   studentSelect.value = currentStudent;
@@ -1933,7 +2173,9 @@ function saveCurrentStudent() {
     if (checked) grades[qKey(q)] = parseFloat(checked.value);
   }
   const comments = commentsByStudent[currentStudent] || (commentsByStudent[currentStudent] = {});
-  questionsEl.querySelectorAll(".qcomment").forEach(input => {
+  // ".question .qcomment", not ".qcomment": the feedback box sits in the list too (in
+  // #totalBar) and carries the same class, but it is saved on its own line below.
+  questionsEl.querySelectorAll(".question .qcomment").forEach(input => {
     comments[input.dataset.key] = input.value.trim();
   });
   feedbackByStudent[currentStudent] = globalFeedback.value;
@@ -2827,6 +3069,12 @@ studentSelect._comboItemClass = (name) =>
   studentStatus(name) + (name === currentStudent ? " current" : "");
 studentSelect._comboToolbar = buildStudentToolbar;
 studentSelect._comboItemNote = (name) => groupByStudent[name] || "";  // greyed group after the name
+// Their score so far, over the questions graded so far — the same pair the total row shows.
+studentSelect._comboItemScore = (name) => {
+  if (schemeFor(name).length === 0) return "";   // no questions: nothing to score
+  const t = computeTotals(name);
+  return fmt(t.sum) + " / " + fmt(t.max);
+};
 studentSelect._comboItemTag = studentPageTag;   // each student's page, or a crossed-out page
 btnSetPosition.addEventListener("click", onSetPositionClick);
 studentSelect._comboItemFill = studentFraction;                       // background = grading progress
@@ -2924,12 +3172,6 @@ feedbackAdd.addEventListener("mousedown", e => {
   if (activeComboInput === globalFeedback && comboPopup.classList.contains("open")) openCombo(globalFeedback);
 });
 
-// "For all" switch: decides whether Add/Remove question affects every student
-// (default) or only the current one.
-const forAllCheck = document.getElementById("forAllCheck");
-forAll = forAllCheck.checked;
-forAllCheck.addEventListener("change", () => { forAll = forAllCheck.checked; });
-
 // Zoom controls.
 document.getElementById("btnPdfZoomIn").addEventListener("click", () => zoomPdf(1.2));
 document.getElementById("btnPdfZoomOut").addEventListener("click", () => zoomPdf(1 / 1.2));
@@ -2974,38 +3216,46 @@ questionsEl.addEventListener("click", e => {
   pressedOption = null;
 }, true);
 
-// Remove or reorder a question/group via its row buttons (delegated so it covers re-renders).
+// Edit, remove or reorder a question/group via its row buttons (delegated so it covers
+// re-renders). Remove and the arrows are only rendered on the row being edited.
 questionsEl.addEventListener("click", e => {
+  const ed = e.target.closest(".qedit");
+  if (ed) {
+    ed.closest(".question").classList.contains("editing") ? commitEdit() : beginEdit(ed.dataset.key);
+    return;
+  }
   const grm = e.target.closest(".qgremove"); // group remove — check first (also carries .qremove)
   if (grm) { removeGroup(grm.dataset.group); return; }
   const rm = e.target.closest(".qremove");
-  if (rm) { removeQuestion(rm.dataset.key); return; }
+  if (rm) {
+    if (rm.closest(".question").dataset.draft) cancelDraft(); // nothing created yet, nothing to confirm
+    else { editingKey = null; removeQuestion(rm.dataset.key); }
+    return;
+  }
   const gmv = e.target.closest(".qgmove"); // group move — check first (also carries .qmove)
   if (gmv) { if (!gmv.disabled) moveGroup(gmv.dataset.group, gmv.dataset.dir); return; }
   const mv = e.target.closest(".qmove");
-  if (mv && !mv.disabled) moveQuestion(mv.dataset.key, mv.dataset.dir);
+  if (!mv || mv.disabled) return;
+  // The arrows live on the edited row, so apply what was typed first and keep it open —
+  // its key may have just changed.
+  const key = commitEdit();
+  if (key === false || !key) return;
+  editingKey = key;
+  moveQuestion(key, mv.dataset.dir);
 });
 
-// Add-question inline form.
-document.getElementById("aqAdd").addEventListener("click", addQuestion);
-["aqGroup", "aqTitle", "aqScores"].forEach(id => {
-  document.getElementById(id).addEventListener("keydown", e => {
-    if (e.key === "Enter") { e.preventDefault(); addQuestion(); }
-  });
+// Enter applies the edited question, Escape leaves it as it was (and drops a new one).
+questionsEl.addEventListener("keydown", e => {
+  if (!e.target.closest || !e.target.closest(".question.editing")) return;
+  if (e.key === "Enter") { e.preventDefault(); commitEdit(); }
+  else if (e.key === "Escape" && !comboPopup.classList.contains("open")) {
+    e.preventDefault();
+    cancelDraft();   // also clears editingKey, discarding the untouched edit
+  }
 });
 
-// Group picker: an editable combobox (reusing the shared popup) listing the groups
-// currently in use; choosing one fills the box, typing a new name creates it on add.
-const aqGroup = document.getElementById("aqGroup");
-const aqGroupArrow = document.getElementById("aqGroupArrow");
-aqGroup._comboItems = () => questionGroups;
-aqGroup._comboSelect = (name) => { aqGroup.value = name; };
-aqGroup.addEventListener("focus", () => openCombo(aqGroup));
-aqGroupArrow.addEventListener("mousedown", e => {
-  e.preventDefault(); // keep focus where it is
-  (activeComboInput === aqGroup && comboPopup.classList.contains("open"))
-    ? closeCombo() : openCombo(aqGroup);
-});
+// Adding a question opens a blank row in edit mode; it is created when that row is applied.
+document.getElementById("aqAdd").addEventListener("click", startNewQuestion);
 
 // Close the comment popup on outside click, Escape, grading-list scroll, or resize.
 document.addEventListener("pointerdown", e => {
