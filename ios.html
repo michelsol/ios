@@ -202,11 +202,15 @@
     background: #dbeafe; color: var(--accent); border-color: #93c5fd;
     box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2);
   }
+  /* The scrollbar goes on the inline-end edge, so "rtl" is what puts it on the left; every
+     child flips back to "ltr", and everything deeper inherits that from its row. */
   #questions {
     flex: 1 1 auto;
     overflow-y: auto;
     padding: 8px 16px;
+    direction: rtl;
   }
+  #questions > * { direction: ltr; }
   #questionsEmpty {
     color: var(--muted);
     text-align: center;
