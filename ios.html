@@ -224,7 +224,7 @@
     border-left: 3px solid transparent; /* reserved, so grading a row shifts nothing */
   }
   /* Grading state of a row. Every question is one or the other, so :not() is exact and
-     no second class is needed (.ungraded is set in refreshCheckedStyles). */
+     no second class is needed (.ungraded is set in renderGrades). */
   .question.ungraded       { border-left-color: var(--ungraded); background: var(--ungraded-bg); }
   .question:not(.ungraded) { border-left-color: var(--graded);   background: var(--graded-bg); }
   /* Being edited: neutral, since the row shows the question itself and not its grade. */
@@ -242,7 +242,7 @@
   .combo:focus-within { border-color: var(--accent); }
   /* The text box of a combo. The edit row's group box is one too, but must not be a
      ".qcomment" — that class is what saveCurrentStudent() collects comments from. */
-  .qcomment, .qedit-group {
+  .qcomment, .qedit-group, .qscorebox {
     flex: 1 1 auto;
     min-width: 0;
     font: inherit;
@@ -251,7 +251,8 @@
     background: transparent;
     color: var(--text);
   }
-  .qcomment:focus, .qedit-group:focus { outline: none; }
+  .qcomment:focus, .qedit-group:focus, .qscorebox:focus { outline: none; }
+  .qscorebox { text-align: center; font-variant-numeric: tabular-nums; font-weight: 700; }
   .combo-arrow {
     flex: 0 0 auto;
     border: 0;
@@ -374,10 +375,12 @@
     flex-wrap: wrap;
     gap: 8px;
   }
-  /* A key you press: raised when unpicked, pushed in when picked. The radio itself is
-     hidden (it still holds the state), which is what makes the row narrower. */
+  /* A key you press: raised when unpicked, pushed in when picked. It carries no state of
+     its own — it sets the question's score box, and renderGrades() presses it back in. */
   .opt {
     position: relative;
+    font: inherit;                       /* buttons don't inherit it */
+    color: var(--text);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -393,21 +396,19 @@
     box-shadow: 0 1px 2px rgba(0,0,0,0.12);
   }
   .opt:hover { border-color: var(--accent); background: linear-gradient(#fff, #eef4ff); }
-  .opt input {                           /* hidden, but still focusable and still the state */
-    position: absolute;
-    opacity: 0;
-    width: 0;
-    height: 0;
-    margin: 0;
-  }
-  .opt:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
-  .opt.checked {
+  .opt:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .opt.pressing {                        /* only while held: a key holds no state of its own */
     border-color: var(--accent);
     background: #e4edff;
-    font-weight: 600;
     box-shadow: inset 0 2px 3px rgba(0,0,0,0.18);
     transform: translateY(1px);
   }
+  /* The score box: the grade as a number, as narrow as its widest score (see buildScoreBox).
+     It carries the question's state, like the row it sits in — but in stronger tints of the
+     same green/amber, so the box stays distinct from the row's wash behind it. */
+  .qscore-combo { flex: 0 0 auto; min-width: 0; }   /* .combo's 140px floor doesn't apply */
+  .question.ungraded       .qscore-combo { background: #fdf4e3; }   /* still to grade */
+  .question:not(.ungraded) .qscore-combo { background: #d7f0e0; }   /* graded */
   .qremove {
     flex: 0 0 auto;
     align-self: center;
@@ -525,7 +526,9 @@
     background: #f9fafb;
   }
   #totalBar .max { color: var(--muted); font-weight: 500; }
-  #pdfBar .vsep, #totalBar .vsep { flex: 0 0 auto; align-self: stretch; width: 1px; background: var(--border); }
+  #pdfBar .vsep, #totalBar .vsep, .question .vsep {
+    flex: 0 0 auto; align-self: stretch; width: 1px; background: var(--border);
+  }
   .totalLabel { flex: 0 0 auto; white-space: nowrap; }
   #feedbackCombo { flex: 1 1 auto; }
   #globalFeedback { font-weight: 400; font-size: 14px; }
@@ -817,7 +820,7 @@ if (window.pdfjsLib) {
 // Each student carries its own question scheme. `schemeQuestions` is a live alias
 // to the currently displayed student's array (a standalone "draft" when there is
 // no current student); `schemeByStudent` holds every student's array.
-let schemeByStudent = {};      // { name: [{ title, max, scores:[..], group }, ...] }
+let schemeByStudent = {};      // { name: [{ title, max, scores:[..], split, group }, ...] }
 let schemeQuestions = [];      // alias of the current student's scheme (or a draft)
 let questionGroups = [];       // distinct named groups in use across all students (combobox list)
 // "For all" switch (the checkbox on the row being edited): decides whether adding,
@@ -825,7 +828,7 @@ let questionGroups = [];       // distinct named groups in use across all studen
 let forAll = true;
 // Which question row is open for editing (UI-only, never saved). At most one at a time.
 let editingKey = null;         // qKey of the question being edited; null = none
-let editingDraft = null;       // { title, scores, group } of a question not created yet, or null
+let editingDraft = null;       // { title, scores, split, group } of a question not created yet
 let students = [];             // ["e1", "e2", ...]
 let gradesByStudent = {};      // { name: { title: selectedScore } }
 let commentsByStudent = {};    // { name: { title: commentString } }
@@ -996,14 +999,38 @@ function toNum(s) {
   return parseFloat(s);
 }
 
-// Parse a possible-scores string ("0 0.25 0.5") into a deduped number list, kept in the
-// order it was typed: the score buttons are laid out in that order, so the teacher decides
-// it. The max is therefore the largest entry, not the last one.
-function parseScoreList(text) {
-  return Array.from(new Set(
-    (text || "").trim().split(/[\s;]+/).filter(Boolean)
-      .map(s => toNum(s)).filter(n => !isNaN(n))
-  ));
+// Parse a possible-scores string into { scores, split }. Scores are deduped and kept in the
+// order they were typed (the teacher decides the layout), so the max is the largest entry,
+// not the last one. An optional "|" divides the frequent scores — which also get a button —
+// from the rest, which live only in the question's score list: "0 0.5 1 | 1.5 2" gives three
+// buttons, "| 0 1" gives none, and no bar gives a button to every score. `split` is how many
+// come before the bar. Only the first bar counts; any later one is just a separator.
+function parseScoreSpec(text) {
+  const scores = [];
+  const seen = new Set();
+  let split = -1;
+  for (const tok of String(text || "").replace(/\|/g, " | ").trim().split(/[\s;]+/)) {
+    if (!tok) continue;
+    if (tok === "|") { if (split < 0) split = scores.length; continue; }
+    const n = toNum(tok);
+    if (isNaN(n) || seen.has(n)) continue;
+    seen.add(n);
+    scores.push(n);
+  }
+  return { scores, split: split < 0 ? scores.length : split };
+}
+
+// Just the numbers, for callers with no bar to read (e.g. options recovered from grades).
+function parseScoreList(text) { return parseScoreSpec(text).scores; }
+
+// The inverse: a question's score list as it is typed and stored ("0 0.5 1 | 1.5 2").
+function scoreSpecText(q) {
+  const scores = q.scores || [];
+  const split = q.split == null ? scores.length : q.split;
+  const texts = scores.map(fmt);
+  if (split >= scores.length) return texts.join(" ");
+  texts.splice(split, 0, "|");
+  return texts.join(" ");
 }
 
 // The question scheme array for a student. Creates an empty array on first use.
@@ -1044,11 +1071,13 @@ function studentStatus(name) {
   return scheme.every(q => isGraded(grades[qKey(q)])) ? "graded" : "ungraded";
 }
 
-// Add a question (with its score options) to one student's scheme. It starts ungraded
-// (no entry). No-op if that student already has this group+title.
-function addQuestionToStudent(name, title, max, scores, group) {
+// Add a question to one student's scheme. `spec` is { title, max, scores, split, group }
+// (see parseScoreSpec). It starts ungraded (no entry). No-op if that student already has
+// this group+title.
+function addQuestionToStudent(name, spec) {
   const scheme = schemeFor(name);
-  const q = { title, max, scores: scores.slice(), group: group || "" };
+  const q = { title: spec.title, max: spec.max, scores: spec.scores.slice(),
+              split: spec.split, group: spec.group || "" };
   if (scheme.some(x => qKey(x) === qKey(q))) return;
   scheme.push(q);
   if (name) {
@@ -1086,8 +1115,9 @@ function recomputeGroups() {
 }
 
 // Rewrite one question in one student's scheme, in place (so it keeps its position).
-// `next` is { title, max, scores, group }. When the key changes, the stored grade and
-// comment move with it, and a grade that is no longer one of the options is dropped.
+// `next` is { title, max, scores, split, group }. When the key changes, the stored grade and
+// comment move with it. Grades are never discarded: the score box can hold any value, so a
+// grade outside the new list is still a grade the teacher can see and change.
 function editQuestionInScheme(name, oldKey, next) {
   const scheme = schemeFor(name);
   const q = scheme.find(x => qKey(x) === oldKey);
@@ -1095,6 +1125,7 @@ function editQuestionInScheme(name, oldKey, next) {
   q.title = next.title;
   q.group = next.group;
   q.scores = next.scores.slice();
+  q.split = next.split;
   q.max = next.max;
   const newKey = qKey(q);
   if (!name) return;
@@ -1104,10 +1135,6 @@ function editQuestionInScheme(name, oldKey, next) {
     if (grades && oldKey in grades) { grades[newKey] = grades[oldKey]; delete grades[oldKey]; }
     if (comments && oldKey in comments) { comments[newKey] = comments[oldKey]; delete comments[oldKey]; }
   }
-  // A grade the new options can no longer express would count in the total while showing
-  // no pressed key, and clicking can't clear it — so it goes.
-  if (grades && isGraded(grades[newKey]) && !next.scores.some(s => s === grades[newKey]))
-    delete grades[newKey];
 }
 
 // The inputs of the row currently in edit mode (they exist only while one is open).
@@ -1149,14 +1176,14 @@ function commitEdit() {
   if (schemeQuestions.some(q => qKey(q) !== editingKey && qKey(q) === key)) {
     rejectField(f.title); return false;          // that group already has this title
   }
-  const scores = parseScoreList(scoreText);
+  const { scores, split } = parseScoreSpec(scoreText);
   if (scores.length === 0) { rejectField(f.scores); return false; }
-  const max = Math.max(...scores);
+  const spec = { title, max: Math.max(...scores), scores, split, group };
 
   saveCurrentStudent();
   const apply = isDraft
-    ? (name) => addQuestionToStudent(name, title, max, scores, group)
-    : (name) => editQuestionInScheme(name, editingKey, { title, max, scores, group });
+    ? (name) => addQuestionToStudent(name, spec)
+    : (name) => editQuestionInScheme(name, editingKey, spec);
   if (forAll) {
     if (students.length === 0) apply("");        // draft scheme, before any student exists
     else for (const name of students) apply(name);
@@ -1190,6 +1217,7 @@ function startNewQuestion() {
   editingDraft = {
     title: "",
     scores: last ? last.scores.slice() : [],
+    split: last ? last.split : 0,
     group: last ? (last.group || "") : "",
   };
   renderQuestions();
@@ -1319,6 +1347,13 @@ function removeGroup(group) {
 // Question rendering
 // =====================================================================
 
+// A thin vertical rule, separating one part of a question row from the next.
+function buildVSep() {
+  const sep = document.createElement("span");
+  sep.className = "vsep";
+  return sep;
+}
+
 // A fresh speech-bubble icon node, marking a feedback/comment field.
 function feedbackIcon() {
   const NS = "http://www.w3.org/2000/svg";
@@ -1386,6 +1421,35 @@ function buildQuestionMoves(key, disableUp, disableDown) {
   return wrap;
 }
 
+// The first entry of a score box's list: picking it clears the grade.
+const CLEAR_SCORE = "—";   // em dash
+
+// A question's score box: the grade as a number, empty when ungraded. Its list offers the
+// uncommon scores — the ones after the "|", which have no key — plus "—" to clear, and any
+// other number can be typed in: the grade does not have to be one the scheme listed.
+function buildScoreBox(q, key) {
+  const combo = document.createElement("div");
+  combo.className = "combo qscore-combo";
+  combo.title = "Score";
+
+  const box = document.createElement("input");
+  box.type = "text";
+  box.className = "qscorebox";        // not "qcomment": that class is what comments are read from
+  box.dataset.key = key;
+  box.autocomplete = "off";
+  const texts = q.scores.map(fmt);
+  box._comboItems = () => [CLEAR_SCORE].concat(texts.slice(q.split));
+  box._comboSelect = (v) => { box.value = v === CLEAR_SCORE ? "" : v; onScoreBoxChange(box); };
+  box.addEventListener("change", () => onScoreBoxChange(box));
+  box.addEventListener("focus", () => openCombo(box));
+  // Just wide enough for the widest score it may have to show — which is any of them, since
+  // a key fills it too — plus its own side padding (the box is border-box like everything).
+  box.style.width = "calc(" + Math.max(2, ...texts.map(t => t.length)) + "ch + 18px)";
+
+  combo.appendChild(box);
+  return combo;
+}
+
 // Build one question row. disableUp/disableDown reflect the question's position
 // within its own group (moves stay inside the group). `q` is a scheme question, or
 // `editingDraft` when this is the not-yet-created row (isDraft), which is always edited.
@@ -1411,9 +1475,10 @@ function buildQuestionBlock(q, disableUp, disableDown, isDraft) {
       const sinput = document.createElement("input");
       sinput.type = "text";
       sinput.className = "qedit-scores";
-      sinput.placeholder = "0 0.5 1 1.5 2";
-      sinput.title = "Possible scores, in the order they should appear";
-      sinput.value = (q.scores || []).map(fmt).join(" ");
+      sinput.placeholder = "0 1 | 0.25 0.5 0.75";
+      sinput.title = "Possible scores, in the order they should appear. "
+                   + "Scores after a | have no button: they live only in the score box.";
+      sinput.value = scoreSpecText(q);
       block.appendChild(sinput);
 
       const gcombo = document.createElement("div");
@@ -1462,28 +1527,27 @@ function buildQuestionBlock(q, disableUp, disableDown, isDraft) {
     title.className = "qtitle";
     title.textContent = q.title;
     block.appendChild(title);
+    block.appendChild(buildVSep());
+    block.appendChild(buildScoreBox(q, key));   // the grade first, its keys after
+    block.appendChild(buildVSep());
 
+    block.dataset.key = key;   // the renderer paints this row from the stored grade
+
+    // A key per frequent score (those before the "|"); it sets the grade, and pressing the
+    // one already holding it clears the grade. The rest are only in the score box.
     const options = document.createElement("div");
     options.className = "options";
-    for (const score of q.scores) {
-      const label = document.createElement("label");
-      label.className = "opt";
-
-      const radio = document.createElement("input");
-      radio.type = "radio";
-      radio.name = "q_" + key;
-      radio.value = String(score);
-      radio.dataset.key = key;
-      radio.addEventListener("change", onRadioChange);
-
-      const txt = document.createElement("span");
-      txt.textContent = fmt(score);
-
-      label.appendChild(radio);
-      label.appendChild(txt);
-      options.appendChild(label);
+    for (const score of q.scores.slice(0, q.split == null ? q.scores.length : q.split)) {
+      const opt = document.createElement("button");
+      opt.type = "button";
+      opt.className = "opt";
+      opt.dataset.key = key;
+      opt.dataset.score = String(score);
+      opt.textContent = fmt(score);
+      options.appendChild(opt);
     }
     block.appendChild(options);
+    if (options.childElementCount) block.appendChild(buildVSep());  // none when there are no keys
 
     block.appendChild(feedbackIcon());
 
@@ -1800,43 +1864,50 @@ function clearComboInput(input, store) {
   closeCombo();
 }
 
-function onRadioChange(e) {
-  selectOption(e.target, false); // native change: the radio is already checked, never toggle
-}
-
-// Apply a click on a score option: store it for the current student and refresh the UI.
-// With allowClear (a pointer press, handled before the browser checks the radio), pressing
-// the option already selected clears the grade instead — the question goes back to ungraded.
-function selectOption(input, allowClear) {
-  if (!input) return;
-  const key = input.dataset.key;
-  const clear = !!(allowClear && input.checked);
-  input.checked = !clear;
+// The stored grade is the only grading state; the score keys, the score box and the row's
+// colour are all painted from it. `value` of null (or NaN) means "not graded".
+function setGrade(key, value) {
   if (currentStudent && gradesByStudent[currentStudent]) {
-    if (clear) delete gradesByStudent[currentStudent][key];
-    else gradesByStudent[currentStudent][key] = parseFloat(input.value);
+    if (value == null || isNaN(value)) delete gradesByStudent[currentStudent][key];
+    else gradesByStudent[currentStudent][key] = value;
   }
-  refreshCheckedStyles();
+  renderGrades();
   refreshStudentStatus();
   refreshProgress();
   recomputeTotal();
   recomputeSubtotals();
 }
 
-// Sync the ".checked" option highlight (from the radios themselves) and the ".ungraded"
-// row marker (from the stored grades, so it can never disagree with studentStatus — a
-// grade that is not among the question's current options checks no radio but is still a
-// grade). Both follow every path that changes a grade.
-function refreshCheckedStyles() {
-  questionsEl.querySelectorAll(".opt").forEach(opt => {
-    const input = opt.querySelector("input");
-    opt.classList.toggle("checked", input.checked);
-  });
+// Press a score key: it writes its score into the question's score box. That is all it does
+// — it shows no state, and pressing it again just sets the same grade again. Clearing is
+// done in the box ("—" in its list, or emptying it).
+function pressOption(opt) {
+  if (!opt) return;
+  setGrade(opt.dataset.key, parseFloat(opt.dataset.score));
+}
+
+// A grade typed into (or picked from) a question's score box. Anything that is not a number
+// is refused, and the box falls back to the stored grade.
+function onScoreBoxChange(box) {
+  const text = box.value.trim();
+  if (text === "" || text === CLEAR_SCORE) { setGrade(box.dataset.key, null); return; }
+  const n = toNum(text);
+  if (isNaN(n)) { renderGrades(); return; }   // not a number: keep the grade, restore the box
+  setGrade(box.dataset.key, n);
+}
+
+// Paint every row from the stored grades: the score box shows the grade (empty when there is
+// none) and the row is marked ".ungraded" until it has one. The keys show nothing — they are
+// buttons that set a score, not a picture of the current one.
+function renderGrades() {
   const grades = (currentStudent && gradesByStudent[currentStudent]) || {};
+  questionsEl.querySelectorAll(".qscorebox").forEach(box => {
+    const v = grades[box.dataset.key];
+    box.value = isGraded(v) ? fmt(v) : "";
+  });
   questionsEl.querySelectorAll(".question").forEach(block => {
     if (block.classList.contains("editing")) return; // shows its definition, not its grade
-    const input = block.querySelector(".opt input");
-    block.classList.toggle("ungraded", !(input && isGraded(grades[input.dataset.key])));
+    block.classList.toggle("ungraded", !isGraded(grades[block.dataset.key]));
   });
 }
 
@@ -1958,7 +2029,8 @@ function switchToStudent(name) {
 
 // A deep copy of a scheme array, so a new student's questions are independent.
 function cloneScheme(scheme) {
-  return scheme.map(q => ({ title: q.title, max: q.max, scores: q.scores.slice(), group: q.group || "" }));
+  return scheme.map(q => ({ title: q.title, max: q.max, scores: q.scores.slice(),
+                            split: q.split, group: q.group || "" }));
 }
 
 // Add a single student by name (the name typed in the student box, on Enter or from the
@@ -2112,10 +2184,12 @@ function loadWorkbook(s) {
     return headers.map(h => {
       const { group: g0, title } = splitHeader(h);
       const group = g0 == null ? "" : g0;
-      let scores = parseScoreList(scoreVals[h]);
-      if (scores.length === 0) scores = parseScoreList(gradeVals[h]);
-      if (scores.length === 0) scores = [0];
-      return { title, max: Math.max(...scores), scores, group, _h: h };
+      // The stored list may carry a "|" (see parseScoreSpec); the fallbacks can't, so
+      // those questions come back with a button per score, as they were written.
+      let { scores, split } = parseScoreSpec(scoreVals[h]);
+      if (scores.length === 0) { scores = parseScoreList(gradeVals[h]); split = scores.length; }
+      if (scores.length === 0) { scores = [0]; split = 1; }
+      return { title, max: Math.max(...scores), scores, split, group, _h: h };
     });
   };
 
@@ -2161,17 +2235,19 @@ function loadWorkbook(s) {
   updateNavButtons();
 }
 
-// Save the radios + comments currently shown into the current student's state.
-// Nothing checked means "leave the stored grade alone", not "clear it": a grade whose
-// value is not among the question's current options has no matching radio, and clearing
-// is done explicitly in selectOption() anyway.
+// Save the comments (and any half-typed score) currently shown into the current student's
+// state. Grades are stored the moment they are set, so only a score box the user typed in
+// and has not left yet can still be missing; a box holding no number is left alone rather
+// than clearing the grade, since clearing is always explicit (see setGrade).
 function saveCurrentStudent() {
   if (!currentStudent || !gradesByStudent[currentStudent]) return;
   const grades = gradesByStudent[currentStudent];
-  for (const q of schemeQuestions) {
-    const checked = questionsEl.querySelector('input[name="q_' + cssEscape(qKey(q)) + '"]:checked');
-    if (checked) grades[qKey(q)] = parseFloat(checked.value);
-  }
+  questionsEl.querySelectorAll(".qscorebox").forEach(box => {
+    const text = box.value.trim();
+    if (text === "") return;
+    const n = toNum(text);
+    if (!isNaN(n)) grades[box.dataset.key] = n;
+  });
   const comments = commentsByStudent[currentStudent] || (commentsByStudent[currentStudent] = {});
   // ".question .qcomment", not ".qcomment": the feedback box sits in the list too (in
   // #totalBar) and carries the same class, but it is saved on its own line below.
@@ -2192,17 +2268,12 @@ function loadStudent(name) {
   }
 
   globalFeedback.value = (currentStudent && feedbackByStudent[currentStudent]) || "";
-  const grades = (currentStudent && gradesByStudent[currentStudent]) || {};
   const comments = (currentStudent && commentsByStudent[currentStudent]) || {};
   for (const q of schemeQuestions) {
-    // No stored grade means not graded yet: every option stays unchecked.
-    const value = grades[qKey(q)];
-    const radios = questionsEl.querySelectorAll('input[name="q_' + cssEscape(qKey(q)) + '"]');
-    radios.forEach(r => { r.checked = isGraded(value) && (parseFloat(r.value) === value); });
     const cinput = questionsEl.querySelector('.qcomment[data-key="' + cssEscape(qKey(q)) + '"]');
     if (cinput) cinput.value = comments[qKey(q)] || "";
   }
-  refreshCheckedStyles();
+  renderGrades();          // the keys, the score boxes and the row colours, from the grades
   refreshStudentStatus();
   refreshProgress();     // also covers add/remove of a student or question, and .ods loads
   recomputeTotal();
@@ -2804,7 +2875,7 @@ function buildWorkbook() {
     { name: "Feedback",      aoa: students.map(n => [n, feedbackByStudent[n] || ""]) },
     { name: "Student_groups", aoa: students.map(n => [n, groupByStudent[n] || ""]) },
     // Per student: [name, ...titles] then ["", ..."score1 score2 ..." per question].
-    { name: "Grading_Scheme", aoa: alternating((n, q) => q.scores.join(" ")) },
+    { name: "Grading_Scheme", aoa: alternating((n, q) => scoreSpecText(q)) },
     { name: "Grades",         aoa: alternating(gradeCell) },
     { name: "Comments",       aoa: alternating((n, q) => (n && commentsByStudent[n] && commentsByStudent[n][qKey(q)]) || "") },
     // Convenience only: the running total next to the full max of every question.
@@ -3185,13 +3256,17 @@ questionsEl.addEventListener("pointerdown", e => {
   const opt = e.target.closest(".opt");
   if (!opt) return;            // ignore presses on the scrollbar / gaps
   if (e.button !== undefined && e.button !== 0) return; // left button only
-  const input = opt.querySelector("input");
   e.preventDefault();          // skip the browser's click synthesis/delay
   pressedOption = opt;
-  // Nothing has toggled the radio yet, so its state is still the previous one: pressing
-  // the option already selected can be read as "clear this grade".
-  selectOption(input, true);
+  opt.classList.add("pressing");   // ...which also suppresses :active, so say it ourselves
+  pressOption(opt);
 });
+// Let go anywhere: no key is held any more.
+const releaseOption = () => {
+  questionsEl.querySelectorAll(".opt.pressing").forEach(o => o.classList.remove("pressing"));
+};
+document.addEventListener("pointerup", releaseOption);
+document.addEventListener("pointercancel", releaseOption);
 
 // Middle-click inside the question list or the student bar steps to the next student
 // (from the last, back to the first). Preventing the default on mousedown is what
@@ -3206,13 +3281,13 @@ questionsEl.addEventListener("mousedown", nextStudentOnMiddleClick);
 document.getElementById("studentBar").addEventListener("mousedown", nextStudentOnMiddleClick);
 
 // Canceling pointerdown suppresses the compatibility mouse events but not the click that
-// follows, and that click's activation behaviour would re-check the radio we just cleared
-// (and fire "change"). Swallow exactly the click belonging to a press we already applied.
-// Keyboard activation (Space) arrives with no preceding pointerdown, so it still works.
+// follows. Ignore exactly the click belonging to a press we already applied; a click with no
+// preceding press is a keyboard activation (Space/Enter on a focused key), which grades.
 questionsEl.addEventListener("click", e => {
   const opt = e.target.closest(".opt");
   if (!opt) return;
   if (opt === pressedOption) e.preventDefault();
+  else pressOption(opt);
   pressedOption = null;
 }, true);
 
