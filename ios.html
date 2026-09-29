@@ -1786,21 +1786,28 @@ function positionCombo() {
   if (!activeComboInput) return;
   const combo = activeComboInput.closest(".combo");
   const r = combo.getBoundingClientRect();
-  comboPopup.style.left = r.left + "px";
-  comboPopup.style.width = r.width + "px";
+  // The popup is fixed at the end of the body, outside #questions, so the grading zoom never
+  // reaches it: its text would stay full size inside a box measured at the zoomed width, and
+  // be clipped. Zoom it by the same factor, so it shrinks with the row that opened it.
+  const z = questionsEl.contains(activeComboInput) ? gradeZoom : 1;
+  comboPopup.style.zoom = z === 1 ? "" : z;
+  // The rectangle below is in screen pixels; `zoom: z` multiplies back whatever we set here.
+  const px = (v) => (v / z) + "px";
+  comboPopup.style.left = px(r.left);
+  comboPopup.style.width = px(r.width);
   const spaceBelow = window.innerHeight - r.bottom;
   const spaceAbove = r.top;
   // Flip the popup above the input when there's little room below (e.g. the
   // feedback combo sits in the bottom bar) and more room above.
   if (spaceBelow < 160 && spaceAbove > spaceBelow) {
     comboPopup.style.top = "";
-    comboPopup.style.bottom = (window.innerHeight - r.top) + "px";
-    comboPopup.style.maxHeight = Math.max(120, spaceAbove - 8) + "px";
+    comboPopup.style.bottom = px(window.innerHeight - r.top);
+    comboPopup.style.maxHeight = px(Math.max(120, spaceAbove - 8));
   } else {
     comboPopup.style.bottom = "";
-    comboPopup.style.top = r.bottom + "px";
+    comboPopup.style.top = px(r.bottom);
     // Cap to the space available below the input so the scrollbar is always reachable.
-    comboPopup.style.maxHeight = Math.max(120, spaceBelow - 8) + "px";
+    comboPopup.style.maxHeight = px(Math.max(120, spaceBelow - 8));
   }
 }
 
