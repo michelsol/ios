@@ -319,6 +319,54 @@
   .combo-label, .combo-note, .combo-score, .combo-tag { position: relative; } /* above the fill */
   .combo-label { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
   .combo-item.current { font-weight: 700; scroll-margin-top: 32px; } /* clear the sticky toolbar */
+  /* A suggestion row being edited: its text becomes a box, and a delete button joins the
+     pencil (see bankRow). */
+  .combo-item.editing { background: #f5f8ff; cursor: default; }
+  .combo-edit {
+    position: relative;                  /* above the fill, like .combo-label */
+    flex: 1 1 auto; min-width: 0;
+    font: inherit;
+    padding: 2px 5px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: #fff;
+    color: var(--text);
+  }
+  .combo-edit:focus { outline: none; border-color: var(--accent); }
+  /* Per-row controls: the pencil, and the delete button that joins it while editing. */
+  .combo-actions { position: relative; flex: 0 0 auto; display: flex; align-items: center; gap: 2px; }
+  .combo-act {
+    display: flex; align-items: center; justify-content: center;
+    width: 20px; height: 20px; padding: 0;
+    border: 1px solid transparent; border-radius: 4px;
+    background: transparent; color: var(--muted);
+    font-size: 13px; line-height: 1;
+    cursor: pointer;
+  }
+  .combo-act svg { width: 12px; height: 12px; }
+  .combo-act:hover { background: #f0f5ff; border-color: #c7d7f5; color: var(--accent); }
+  .combo-act.del:hover { background: #fdecec; border-color: #f1c6c6; color: #b91c1c; }
+  .combo-act.on {                        /* the pencil, pressed in while its row is open */
+    color: var(--accent); border-color: var(--accent); background: #e4edff;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.18);
+  }
+  /* The footer under the list, mirroring the toolbar above it: one wide "+". */
+  .combo-footer {
+    position: sticky; bottom: 0; z-index: 1;
+    display: flex;
+    padding: 4px 6px;
+    background: #fff;
+    border-top: 1px solid var(--border);
+  }
+  .combo-add-row {
+    flex: 1 1 auto;
+    height: 22px; padding: 0;
+    border: 1px solid var(--border); border-radius: 4px;
+    background: #fff; color: #15803d;
+    font-size: 15px; font-weight: 700; line-height: 1;
+    cursor: pointer;
+  }
+  .combo-add-row:hover { background: #e7f6ec; border-color: #bfe3cc; }
   /* Optional toolbar at the top of the popup (only the student list sets one, to reorder
      students). Sticky, so it stays reachable while the list scrolls. */
   .combo-toolbar {
@@ -849,6 +897,8 @@ const addQuestionBar = document.getElementById("addQuestionBar");
 const totalBar      = document.getElementById("totalBar");
 const globalFeedback = document.getElementById("globalFeedback");
 let activeComboInput = null;   // the comment input the popup is currently attached to
+let comboEditIndex = -1;       // which row of a suggestion list is open for editing (-1 = none)
+let comboDraft = null;         // text of a new suggestion not in the list yet, or null
 
 // =====================================================================
 // Spreadsheet helpers
@@ -900,61 +950,224 @@ function parseAlternating(rows) {
 
 // ---- Comments ----
 
-// Add an entry to a suggestion list (deduped). The popup reads the list fresh
-// each time it opens, so there is nothing else to refresh.
+// Add an entry to the front of a suggestion list (deduped) — the newest is the one most
+// likely to be wanted again. The popup reads the list fresh each time it opens, so there is
+// nothing else to refresh.
 function bankAdd(bank, set, s) {
   s = (s || "").trim();
   if (!s || set.has(s)) return;
   set.add(s);
-  bank.push(s);
+  bank.unshift(s);
 }
 
-// Remove an entry from a suggestion list (exact, trimmed match). No-op if absent.
-function bankRemove(bank, set, s) {
+// The other three act on a row by its index: that is what the edit controls in the popup know
+// (see bankRow), and the text is the very thing being changed.
+function bankRemoveAt(bank, set, i) {
+  if (i < 0 || i >= bank.length) return;
+  set.delete(bank[i]);
+  bank.splice(i, 1);
+}
+
+function bankSetAt(bank, set, i, s) {
   s = (s || "").trim();
-  if (!set.has(s)) return;
-  set.delete(s);
-  const i = bank.indexOf(s);
-  if (i >= 0) bank.splice(i, 1);
+  if (i < 0 || i >= bank.length || !s) return;
+  set.delete(bank[i]);
+  set.add(s);
+  bank[i] = s;
 }
 
 // Swap a suggestion with its neighbour, to reorder the list. No-op at either end.
-function bankMove(bank, s, delta) {
-  const i = bank.indexOf((s || "").trim());
+function bankMoveAt(bank, i, delta) {
   const j = i + delta;
-  if (i < 0 || j < 0 || j >= bank.length) return;
+  if (i < 0 || i >= bank.length || j < 0 || j >= bank.length) return;
+  const tmp = bank[i];
   bank[i] = bank[j];
-  bank[j] = s;
+  bank[j] = tmp;
 }
 
-// What a text box "is currently on": picking a suggestion appends it (see appendSuggestion),
-// so the suggestion the box ends with is the one its toolbar acts on.
-function lastSegment(v) {
-  const parts = String(v || "").split(",");
-  return parts[parts.length - 1].trim();
+// ---- A text box backed by a suggestion list ----
+// The list is edited in place, in the popup: each row carries a toggleable pencil, and while a
+// row is open its text is editable, a delete button appears next to the pencil, and the
+// toolbar's arrows move that row. The "+" at the foot starts a new entry from whatever is in
+// the box. Which row is open belongs to the popup rather than to the box, so it lives next to
+// activeComboInput (comboEditIndex / comboDraft).
+function bankBox(input, bank, set, noun, store) {
+  input._bank = { bank, set, noun, store };
+  input._comboItems = () => bank;
+  input._comboRows = bankRows(input);
+  input._comboToolbar = bankToolbar(input);
+  input._comboFooter = bankFooter(input);
 }
 
-// The `_comboToolbar` hook for a suggestion list, in the shape the student list uses: one
-// sticky row of buttons above the suggestions. They act on the box itself — the arrows and
-// "−" on the suggestion it ends with, "+" on everything typed in it, "×" on all of it.
-// `noun` names the entries in the tooltips; `store` saves the box after "×" empties it.
-function bankToolbar(input, bank, set, noun, store) {
+// The input of the row being edited (it only exists while one is).
+function bankEditBox() {
+  return comboPopup.querySelector(".combo-item.editing .combo-edit");
+}
+
+// Save the row being edited. Returns false when its text can't be saved — empty, or already
+// in the list — leaving the row open and marked. On the way out of the popup there is nothing
+// left to redraw or to mark, so an unsavable edit is simply dropped.
+function commitBankEdit(input, redraw = true) {
+  const box = bankEditBox();
+  if (!input || !input._bank || !box) { comboEditIndex = -1; comboDraft = null; return true; }
+  const { bank, set } = input._bank;
+  const i = comboEditIndex;              // -1 while the draft row (not in the list yet) is open
+  const text = box.value.trim();
+  const taken = set.has(text) && !(i >= 0 && bank[i] === text);
+  if (!text || taken) {
+    if (!redraw) { comboEditIndex = -1; comboDraft = null; return true; }
+    box.classList.add("qedit-invalid");
+    box.focus();
+    box.select();
+    return false;
+  }
+  if (i < 0) bankAdd(bank, set, text);   // the draft joins the list, at the front
+  else bankSetAt(bank, set, i, text);
+  comboEditIndex = -1;
+  comboDraft = null;
+  if (redraw) openCombo(input);
+  return true;
+}
+
+// Leave the row as it was (Escape). The list stays open.
+function cancelBankEdit(input) {
+  comboEditIndex = -1;
+  comboDraft = null;
+  openCombo(input);
+}
+
+// Open a row for editing — saving whatever was open first, and refusing to move on if that
+// can't be saved. `select` is for the draft row, whose borrowed text should go in one keystroke.
+function openBankEdit(input, index, select) {
+  if (!commitBankEdit(input)) return;
+  comboEditIndex = index;
+  comboDraft = null;
+  openCombo(input);
+  const box = bankEditBox();
+  if (!box) return;
+  box.focus();
+  if (select) box.select();
+  else box.setSelectionRange(box.value.length, box.value.length);
+}
+
+// The footer's "+": a new entry, starting from what is in the box, open and fully selected.
+function startBankDraft(input) {
+  if (!commitBankEdit(input)) return;
+  comboEditIndex = -1;
+  comboDraft = input.value.trim();
+  openCombo(input);
+  const box = bankEditBox();
+  if (box) { box.focus(); box.select(); }
+}
+
+// A row's delete button: drop that entry, or discard the draft.
+function deleteBankRow(input, index) {
+  if (index >= 0) bankRemoveAt(input._bank.bank, input._bank.set, index);
+  comboEditIndex = -1;
+  comboDraft = null;
+  openCombo(input);
+}
+
+// The toolbar's arrows: keep what was typed, move that entry, and stay on it.
+function moveBankRow(input, delta) {
+  const { bank, set } = input._bank;
+  const box = bankEditBox();
+  const i = comboEditIndex;
+  if (i < 0 || !box) return;             // a draft isn't in the list yet: nothing to move
+  const text = box.value.trim();
+  const taken = set.has(text) && bank[i] !== text;
+  if (!text || taken) { box.classList.add("qedit-invalid"); box.focus(); return; }
+  bankSetAt(bank, set, i, text);
+  const j = i + delta;
+  if (j < 0 || j >= bank.length) return;
+  bankMoveAt(bank, i, delta);
+  comboEditIndex = j;
+  openCombo(input);
+  const next = bankEditBox();
+  if (next) next.focus();
+}
+
+// The `_comboRows` hook: the draft row (when there is one) and then the list, each row with
+// its own edit controls.
+function bankRows(input) {
   return () => {
+    const rows = [];
+    if (comboDraft !== null) rows.push(bankRow(input, comboDraft, -1));
+    input._bank.bank.forEach((text, i) => rows.push(bankRow(input, text, i)));
+    return rows;
+  };
+}
+
+function bankRow(input, text, index) {
+  const noun = input._bank.noun;
+  const editing = index < 0 || index === comboEditIndex;
+  const row = document.createElement("div");
+  row.className = "combo-item" + (editing ? " editing" : "");
+
+  if (editing) {
+    const box = document.createElement("input");
+    box.type = "text";
+    box.className = "combo-edit";
+    box.value = text;
+    box.addEventListener("keydown", e => {
+      if (e.key !== "Enter") return;     // Escape is handled once, for the whole popup
+      e.preventDefault();
+      commitBankEdit(input);
+    });
+    row.appendChild(box);
+  } else {
+    row.title = text;
+    const label = document.createElement("span");
+    label.className = "combo-label";
+    label.textContent = text;
+    row.appendChild(label);
+    // Only an idle row picks: while editing, the clicks belong to its box.
+    row.addEventListener("mousedown", e => { e.preventDefault(); selectComboItem(text); });
+  }
+
+  const actions = document.createElement("span");
+  actions.className = "combo-actions";
+  const act = (cls, title, action, label) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "combo-act" + (cls ? " " + cls : "");
+    btn.tabIndex = -1;
+    btn.title = title;
+    if (label) btn.textContent = label;
+    else btn.appendChild(editIcon());
+    btn.addEventListener("mousedown", e => {
+      e.preventDefault();
+      e.stopPropagation();               // don't let the row pick this suggestion
+      action();
+    });
+    actions.appendChild(btn);
+  };
+  if (editing) {
+    act("del", index < 0 ? "Discard this new " + noun : "Delete this " + noun + " from the list",
+        () => deleteBankRow(input, index), "−");
+  }
+  act("edit" + (editing ? " on" : ""),
+      editing ? "Save this " + noun : "Edit, move or delete this " + noun,
+      () => (editing ? commitBankEdit(input) : openBankEdit(input, index, false)));
+  row.appendChild(actions);
+  return row;
+}
+
+// The `_comboToolbar` hook: clearing the box, and the arrows that move the row being edited.
+function bankToolbar(input) {
+  return () => {
+    const bank = input._bank.bank, noun = input._bank.noun, store = input._bank.store;
     const bar = document.createElement("div");
     bar.className = "combo-toolbar";
-    const cur = lastSegment(input.value);
-    const i = bank.indexOf(cur);
-    const text = input.value.trim();
 
-    const add = (btn, title, disabled, action, reopen = true) => {
+    const add = (btn, title, disabled, action) => {
       btn.type = "button";
       btn.title = title;
       btn.disabled = disabled;
       btn.addEventListener("mousedown", e => {
-        e.preventDefault();            // keep focus in the box so the popup stays open
+        e.preventDefault();              // keep focus where it is
         if (btn.disabled) return;
-        action();
-        if (reopen) openCombo(input);  // redraw the list (and this toolbar) in the new order
+        action();                        // each action redraws, or closes, as it needs to
       });
       bar.appendChild(btn);
     };
@@ -971,26 +1184,37 @@ function bankToolbar(input, bank, set, noun, store) {
       return btn;
     };
 
-    // First the two that act on the box itself...
-    add(tool("+", "add"), "Add this " + noun + " to the suggestion list",
-        !text || set.has(text), () => bankAdd(bank, set, text));
-    // Clearing blurs the box and folds the list, so there is nothing left to redraw.
-    add(tool("×"), "Clear this " + noun, !input.value, () => clearComboInput(input, store), false);
-    // ...then the three that act on the suggestion the box names.
-    add(move("up"),   "Move this " + noun + " up in the list",   i <= 0, () => bankMove(bank, cur, -1));
+    add(tool("×"), "Clear this " + noun, !input.value, () => clearComboInput(input, store));
+    // The arrows only mean something while a row is open for editing.
+    add(move("up"), "Move this " + noun + " up in the list",
+        comboEditIndex <= 0, () => moveBankRow(input, -1));
     add(move("down"), "Move this " + noun + " down in the list",
-        i < 0 || i >= bank.length - 1, () => bankMove(bank, cur, 1));
-    add(tool("−", "del"), "Remove this " + noun + " from the suggestion list",
-        i < 0, () => bankRemove(bank, set, cur));
+        comboEditIndex < 0 || comboEditIndex >= bank.length - 1, () => moveBankRow(input, 1));
     return bar;
   };
 }
 
-// A picked suggestion is appended to what's already in the box (", " between), not
+// The `_comboFooter` hook: one wide "+" under the list, which starts a new entry.
+function bankFooter(input) {
+  return () => {
+    const foot = document.createElement("div");
+    foot.className = "combo-footer";
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "combo-add-row";
+    btn.textContent = "+";
+    btn.title = "Save a new " + input._bank.noun + ", starting from what is in the box";
+    btn.addEventListener("mousedown", e => { e.preventDefault(); startBankDraft(input); });
+    foot.appendChild(btn);
+    return foot;
+  };
+}
+
+// A picked suggestion is appended to what's already in the box ("; " between), not
 // substituted for it.
 function appendSuggestion(input, val) {
   const cur = input.value.trim();
-  input.value = cur ? cur + ", " + val : val;
+  input.value = cur ? cur + "; " + val : val;
 }
 
 // Format a number for display/output without float noise (e.g. 0.7500001 -> "0.75").
@@ -1552,13 +1776,10 @@ function buildQuestionBlock(q, disableUp, disableDown, isDraft) {
     comment.placeholder = "";
     comment.dataset.key = key;
     comment.autocomplete = "off";
-    comment._comboItems = () => commentBank;
     comment._comboSelect = (val) => { appendSuggestion(comment, val); onCommentChange(comment); };
-    // Adding, removing, reordering and clearing all live in the popup's toolbar, so the row
-    // itself is just the box.
-    comment._comboToolbar = bankToolbar(comment, commentBank, commentBankSet, "comment",
-                                        () => onCommentChange(comment));
-    comment._comboItemClass = (val) => (val === lastSegment(comment.value) ? "current" : "");
+    // Saving, editing, reordering and deleting suggestions all happen in the popup, so the row
+    // itself is just the box (see bankBox).
+    bankBox(comment, commentBank, commentBankSet, "comment", () => onCommentChange(comment));
     comment.addEventListener("change", () => onCommentChange(comment));
     redrawComboOnInput(comment);
     // The list unfolds from the arrow and nowhere else, so typing in the box — clicking in
@@ -1727,6 +1948,11 @@ function openCombo(input) {
   // Optional toolbar above the items, like the other _combo* hooks: only the student
   // list sets it (to reorder students); every other combobox leaves it unset.
   if (input._comboToolbar) comboPopup.appendChild(input._comboToolbar());
+  // Optional: the input builds its own rows (the suggestion lists do, to carry their edit
+  // controls and a not-yet-saved draft). Everything else uses the generic builder below.
+  if (input._comboRows) {
+    for (const row of input._comboRows()) comboPopup.appendChild(row);
+  } else
   for (const s of items) {
     const item = document.createElement("div");
     // Optional per-item class, like the other _combo* hooks: only the student list uses
@@ -1779,10 +2005,14 @@ function openCombo(input) {
     item.addEventListener("mousedown", e => { e.preventDefault(); selectComboItem(s); });
     comboPopup.appendChild(item);
   }
+  // Optional footer under the items, mirroring the toolbar above them (the suggestion lists
+  // put their "+" there).
+  if (input._comboFooter) comboPopup.appendChild(input._comboFooter());
   positionCombo();
   comboPopup.classList.add("open");
-  // Keep the current item in view (e.g. a student just moved past the visible edge).
-  const current = comboPopup.querySelector(".combo-item.current");
+  // Keep the row that matters in view (a student just moved past the visible edge, or a
+  // suggestion was just opened for editing).
+  const current = comboPopup.querySelector(".combo-item.current, .combo-item.editing");
   if (current) current.scrollIntoView({ block: "nearest" });
 }
 
@@ -1822,6 +2052,12 @@ function selectComboItem(value) {
 }
 
 function closeCombo() {
+  // Save a row still being edited, if it can be saved; either way the popup takes its edit
+  // state with it.
+  const input = activeComboInput;
+  if (input && input._bank) commitBankEdit(input, false);
+  comboEditIndex = -1;
+  comboDraft = null;
   comboPopup.classList.remove("open");
   activeComboInput = null;
 }
@@ -1835,11 +2071,12 @@ function clearComboInput(input, store) {
   closeCombo();
 }
 
-// A bank toolbar decides what its buttons can do from the box's text, and marks the row that
-// text names — both change with every keystroke, so redraw the list while it is open. The
-// box itself is never touched, so the caret and any selection stay where they are.
+// The toolbar's "×" is decided from the box's text, so a redraw keeps it honest as the box is
+// typed in. The box itself is never touched, so the caret and any selection stay where they
+// are — but a row being edited is skipped, since a redraw would take its focus.
 function redrawComboOnInput(input) {
   input.addEventListener("input", () => {
+    if (comboEditIndex >= 0 || comboDraft !== null) return;
     if (activeComboInput === input && comboPopup.classList.contains("open")) openCombo(input);
   });
 }
@@ -3216,13 +3453,10 @@ globalFeedback.addEventListener("input", () => {
 const storeFeedback = () => {
   if (currentStudent) feedbackByStudent[currentStudent] = globalFeedback.value;
 };
-globalFeedback._comboItems  = () => feedbackBank;
 globalFeedback._comboSelect = (val) => { appendSuggestion(globalFeedback, val); storeFeedback(); };
-// Its buttons live in the popup's toolbar, like the comment boxes'; the box itself unfolds
-// the list on click, so it needs no arrow of its own either.
-globalFeedback._comboToolbar = bankToolbar(globalFeedback, feedbackBank, feedbackBankSet,
-                                           "feedback", storeFeedback);
-globalFeedback._comboItemClass = (val) => (val === lastSegment(globalFeedback.value) ? "current" : "");
+// Its list is edited in the popup, like the comment boxes'; the box itself unfolds the list
+// from its arrow, so it needs none of its own either.
+bankBox(globalFeedback, feedbackBank, feedbackBankSet, "feedback", storeFeedback);
 redrawComboOnInput(globalFeedback);
 // Like the comment boxes: only the arrow unfolds the list.
 globalFeedback._comboArrowOnly = true;
@@ -3332,7 +3566,14 @@ document.addEventListener("pointerdown", e => {
   closeCombo();
 });
 document.addEventListener("keydown", e => {
-  if (e.key === "Escape" && comboPopup.classList.contains("open")) closeCombo();
+  if (e.key !== "Escape" || !comboPopup.classList.contains("open")) return;
+  // A row being edited is what Escape backs out of; the list itself stays open.
+  const input = activeComboInput;
+  if (input && input._bank && (comboEditIndex >= 0 || comboDraft !== null)) {
+    cancelBankEdit(input);
+    return;
+  }
+  closeCombo();
 });
 // A box keeps focus after its list closes (a pick, Escape, a scroll), and focus alone
 // won't fire again — so a click on a combo box reopens its list too. "click", not
