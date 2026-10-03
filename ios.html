@@ -195,6 +195,9 @@
   #studentScoreTag { font-variant-numeric: tabular-nums; }
   #btnSetPosition { display: inline-flex; align-items: center; justify-content: center; }
   #btnSetPosition svg { width: 16px; height: 16px; display: block; }
+  /* The red dot says the page button records a position, like any record button. It keeps its
+     colour through every state below, which only ever tint the page outline. */
+  #btnSetPosition .rec-dot { fill: #dc2626; stroke: none; }
   /* The next click sets a page (a new student, or one with no page yet). */
   #btnSetPosition.unset { color: var(--unset); }
   /* Pressed in: the current student's position follows the PDF as it scrolls. */
@@ -756,6 +759,7 @@
              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
           <polyline points="14 2 14 8 20 8"/>
+          <circle class="rec-dot" cx="12" cy="15" r="3.2"/>
         </svg>
       </button>
       <label for="studentSelect" aria-label="Student">
@@ -1445,21 +1449,30 @@ function beginEdit(key) {
   if (f) { f.title.focus(); f.title.select(); }
 }
 
+// What the first question of an empty list starts as — the same example the row's placeholders
+// show, so "+" then apply already yields a sensible question with nothing typed at all.
+const FIRST_QUESTION = { title: "1.", scores: "0 1 | 0.25 0.5 0.75" };
+
 // Append a new question row in edit mode. It borrows the last question's group and score
-// list (a section usually shares one scale); nothing is created until it is applied.
+// layout (a section usually shares one scale); with no question to borrow from, it opens as
+// the worked example above. Nothing is created until the row is applied.
 function startNewQuestion() {
   if (commitEdit() === false) return;
   const last = schemeQuestions[schemeQuestions.length - 1];
+  const first = parseScoreSpec(FIRST_QUESTION.scores);
   editingKey = null;
   editingDraft = {
-    title: "",
-    scores: last ? last.scores.slice() : [],
-    split: last ? last.split : 0,
+    title: last ? "" : FIRST_QUESTION.title,
+    scores: last ? last.scores.slice() : first.scores,
+    split: last ? last.split : first.split,
     group: last ? (last.group || "") : "",
   };
   renderQuestions();
   const f = editFields();
-  if (f) f.title.focus();
+  if (!f) return;
+  f.title.focus();
+  // Caret after the seeded "1.", so typing "(a)" appends to it.
+  f.title.setSelectionRange(f.title.value.length, f.title.value.length);
 }
 
 // Drop the uncreated row (its ✕, or Escape).
@@ -1686,7 +1699,7 @@ function buildQuestionBlock(q, disableUp, disableDown, isDraft) {
       const tinput = document.createElement("input");
       tinput.type = "text";
       tinput.className = "qedit-title";
-      tinput.placeholder = "1. (a)";
+      tinput.placeholder = FIRST_QUESTION.title;
       tinput.title = "Question title";
       tinput.value = q.title || "";
       block.appendChild(tinput);
@@ -1694,7 +1707,7 @@ function buildQuestionBlock(q, disableUp, disableDown, isDraft) {
       const sinput = document.createElement("input");
       sinput.type = "text";
       sinput.className = "qedit-scores";
-      sinput.placeholder = "0 1 | 0.25 0.5 0.75";
+      sinput.placeholder = FIRST_QUESTION.scores;
       sinput.title = "Possible scores, in the order they should appear. "
                    + "Scores after a | have no button: they live only in the score box.";
       sinput.value = scoreSpecText(q);
