@@ -622,11 +622,30 @@
     background: rgba(255, 255, 255, 0.9);
     color: var(--muted); font-size: 12px; line-height: 1; cursor: pointer;
   }
+  /* Dragged to a width: the picture fills the figure, and the height cap steps aside — an
+     explicit width together with a height cap is the pair that squashes a picture. */
+  .qshot.sized .qshot-img { width: 100%; max-width: none; max-height: none; }
+  /* The corner grip. A plain div, so it is not one of the row's buttons and cannot be
+     clicked into the annotator; the hatching is the usual "drag me" corner. */
+  .qshot-grip {
+    position: absolute; right: 3px; bottom: 3px;
+    width: 14px; height: 14px;
+    border: 1px solid var(--border); border-radius: 3px;
+    background: repeating-linear-gradient(315deg, var(--muted) 0 1px, transparent 1px 4px)
+                rgba(255, 255, 255, 0.85);
+    cursor: nwse-resize; touch-action: none;
+  }
+  .qshot-grip:hover { border-color: #c7d7f5; }
   .qshot-edit svg { width: 13px; height: 13px; }
   .qshot-edit { right: 29px; }
   .qshot-del { right: 3px; }
   .qshot-edit:hover { color: var(--accent); border-color: #c7d7f5; }
   .qshot-del:hover { color: #b91c1c; border-color: #f1c6c6; }
+  /* Faded while the pointer is elsewhere: a capture dragged small is hardly wider than the
+     three controls sitting on it, and the picture is the point. */
+  .qshot:not(:hover) .qshot-edit,
+  .qshot:not(:hover) .qshot-del,
+  .qshot:not(:hover) .qshot-grip { opacity: 0.45; }
   /* Group separator inside the question list: a labelled line carrying the subtotal. */
   .qgroup {
     display: flex;
@@ -1051,8 +1070,10 @@ let gradesByStudent = {};      // { name: { title: selectedScore } }
 let commentsByStudent = {};    // { name: { title: commentString } }
 // Captured PDF rectangles, annotated in red, hung off a question's comment. Same shape as
 // commentsByStudent (so every lifecycle site is mirrored one line apart), but the values are
-// arrays: a question may carry several captures. Each is a flattened PNG data URL.
-let imagesByStudent = {};      // { name: { qKey: ["data:image/png;base64,...", ...] } }
+// arrays: a question may carry several captures. Each is a flattened PNG data URL (`src`)
+// plus, once the teacher has dragged its corner, the width to draw it at (`w`) as a fraction
+// of the slip it prints on — see SHOT_MIN_W. No `w` means the size it has always had.
+let imagesByStudent = {};      // { name: { qKey: [{ src: "data:image/png;base64,...", w }] } }
 // Which questions have their capture thumbnails unfolded. View state, never saved — and kept
 // here rather than in the DOM because renderQuestions() rebuilds the whole list on every
 // student switch, which would otherwise fold every panel shut.
@@ -1132,10 +1153,23 @@ function twoColMap(rows) {
 
 // ---- Captured images in the save file ----
 // The PNGs themselves are stored as real files inside the .ods (which is a zip, see
-// addPicturesToOds); the Comment_images sheet only says which question each file belongs to:
-//   [student name, question key, image index (1-based), path inside the zip]
+// addPicturesToOds); the Comment_images sheet only says which question each file belongs to,
+// and how wide it should print:
+//   [student name, question key, image index (1-based), path inside the zip, width fraction]
+// The width is the last cell so that an older file, which has four, still reads: no width
+// means the natural size.
 const PIC_DIR = "Pictures/";
 const PNG_PREFIX = "data:image/png;base64,";
+
+// A capture's drawn width, as a fraction of the slip (or of the row's panel on screen: the
+// same fraction of the same box, which is what makes dragging the thumbnail mean something
+// in print). The floor keeps a capture from being dragged down to an invisible speck.
+const SHOT_MIN_W = 0.08;
+function shotWidth(v) {
+  const n = toNum(v);
+  if (!(n > 0)) return undefined;              // unset, or nonsense: the natural size
+  return Math.min(1, Math.max(SHOT_MIN_W, n));
+}
 
 // Walk every student's captures in question order, naming each file as we go. Returns the
 // sheet rows and the files to put in the zip, which must agree — so both come from here.
@@ -1147,11 +1181,12 @@ function collectImages() {
     for (const q of schemeFor(name)) {
       const key = qKey(q), arr = byQ[key];
       if (!arr || !arr.length) continue;
-      arr.forEach((url, i) => {
+      arr.forEach((shot, i) => {
+        const url = shot && shot.src;
         if (String(url).indexOf(PNG_PREFIX) !== 0) return;
         const path = PIC_DIR + "img" + String(pics.length + 1).padStart(4, "0") + ".png";
         pics.push({ path: path, b64: url.slice(PNG_PREFIX.length) });
-        rows.push([name, key, i + 1, path]);
+        rows.push([name, key, i + 1, path, shot.w || ""]);
       });
     }
   }
@@ -1171,7 +1206,7 @@ function parseImageRows(rows, byPath) {
     const url = byPath[cell(row, 3)];
     if (!name || !key || !(idx >= 1) || !url) continue;
     const byQ = seen[name] || (seen[name] = {});
-    (byQ[key] || (byQ[key] = {}))[idx] = url;
+    (byQ[key] || (byQ[key] = {}))[idx] = { src: url, w: shotWidth(cell(row, 4)) };
   }
   for (const name of Object.keys(seen)) {
     const byQ = out[name] = {};
@@ -2206,12 +2241,16 @@ function buildShotsPanel(key) {
 
 function fillShotsPanel(panel, key) {
   panel.innerHTML = "";
-  shotsFor(key).forEach((src, i) => {
+  shotsFor(key).forEach((shot, i) => {
     const fig = document.createElement("div");
-    fig.className = "qshot";
+    fig.className = "qshot" + (shot.w ? " sized" : "");
+    // The width goes on the figure, not on the picture: a percentage wants a containing
+    // block that has a width of its own, and the panel has one (it spans the row) while the
+    // figure shrinks to fit whatever is in it.
+    if (shot.w) fig.style.width = (shot.w * 100) + "%";
     const img = document.createElement("img");
     img.className = "qshot-img";
-    img.src = src;
+    img.src = shot.src;
     img.alt = "";
     img.title = "Draw on this capture";
     img.dataset.key = key;
@@ -2230,6 +2269,12 @@ function fillShotsPanel(panel, key) {
     };
     act("qshot-edit", "Draw on this capture", null);
     act("qshot-del", "Remove this capture", "✕");
+    const grip = document.createElement("div");
+    grip.className = "qshot-grip";
+    grip.title = "Drag to set how wide this capture prints — double-click to undo";
+    grip.dataset.key = key;
+    grip.dataset.i = i;
+    fig.appendChild(grip);
     panel.appendChild(fig);
   });
 }
@@ -2253,6 +2298,15 @@ function paintShots(key) {
 function toggleShots(key) {
   if (openShots.has(key)) openShots.delete(key);
   else openShots.add(key);
+  paintShots(key);
+}
+
+// How wide this capture is drawn, as a fraction of the slip it prints on; undefined puts it
+// back to its natural size. Stored on the capture itself, so it rides along with it.
+function setShotWidth(key, i, w) {
+  const shot = shotsFor(key)[i];
+  if (!shot) return;
+  shot.w = w;
   paintShots(key);
 }
 
@@ -3737,7 +3791,8 @@ function openAnnotator(req) {
 }
 
 async function prepareAnnotator(req) {
-  const src = req.mode === "edit" ? await loadImage(shotsFor(req.key)[req.i]) : req.canvas;
+  const shot = req.mode === "edit" ? shotsFor(req.key)[req.i] : null;
+  const src = shot ? await loadImage(shot.src) : req.canvas;
   if (!src || !src.width || !src.height) throw new Error("there is nothing to draw on");
   closeCombo();
   annStrokes = [];
@@ -3793,8 +3848,9 @@ function closeAnnotator(attach) {
   }
   const byQ = imagesByStudent[currentStudent] || (imagesByStudent[currentStudent] = {});
   const arr = byQ[st.key] || (byQ[st.key] = []);
-  if (st.mode === "edit" && st.i >= 0 && st.i < arr.length) arr[st.i] = url;
-  else arr.push(url);
+  // Re-drawing on a capture keeps the width it was dragged to; it is the same picture.
+  if (st.mode === "edit" && st.i >= 0 && st.i < arr.length) arr[st.i] = { src: url, w: arr[st.i].w };
+  else arr.push({ src: url });
   openShots.add(st.key);              // show what was just made
   paintShots(st.key);
 }
@@ -4049,7 +4105,7 @@ function totalImageChars() {
   let n = 0;
   for (const name of Object.keys(imagesByStudent)) {
     const byQ = imagesByStudent[name];
-    for (const key of Object.keys(byQ)) for (const url of byQ[key]) n += url.length;
+    for (const key of Object.keys(byQ)) for (const shot of byQ[key]) n += shot.src.length;
   }
   return n;
 }
@@ -4222,7 +4278,14 @@ function buildGradesHTML(opts) {
           '<div class="qpts">' + (graded ? htmlEscape(fmt(v)) : '&ndash;') + ' / ' + htmlEscape(fmt(q.max)) + '</div>' +
           (shots.length
             ? '<div class="qshots">' +
-                shots.map(src => '<img class="qshot" src="' + htmlEscape(src) + '" alt="">').join("") +
+                // A capture whose corner was dragged prints at that fraction of the slip's
+                // width; one that was left alone prints exactly as it always has.
+                shots.map(s => {
+                  const box = s.w
+                    ? ' class="qshot sized" style="width: ' + (Math.round(s.w * 1000) / 10) + '%"'
+                    : ' class="qshot"';
+                  return '<img' + box + ' src="' + htmlEscape(s.src) + '" alt="">';
+                }).join("") +
               '</div>'
             : '') +
         '</div>'
@@ -4353,6 +4416,9 @@ function buildGradesHTML(opts) {
 '    break-inside: avoid;\n' +
 '    page-break-inside: avoid;\n' +
 '  }\n' +
+// A capture dragged to a width carries it inline; the height cap steps aside, since a fixed
+// width together with a capped height is what would squash it.
+'  .qshot.sized { max-height: none; }\n' +
 '  .qpts { flex: 0 0 auto; margin-left: auto; font-size: 14px; white-space: nowrap; font-variant-numeric: tabular-nums; }\n' +
 '  .qrow.ungraded .qpts { color: #9ca3af; }\n' +
 '  @media print {\n' +
@@ -4619,6 +4685,64 @@ questionsEl.addEventListener("click", e => {
   else pressOption(opt);
   pressedOption = null;
 }, true);
+
+// ---- Dragging a thumbnail's corner grip ----
+// The drag says how wide the picture should be drawn, as a fraction of the panel it sits in
+// — the same fraction of the same box in the printed slip, which is what lets the teacher
+// size it here and have it mean something there. Both ends of the ratio come from
+// getBoundingClientRect on purpose: #questions carries the grading zoom, which scales client
+// rects and the pointer alike (clientWidth is not scaled), so a ratio of two client rects is
+// the one expression that holds at every zoom.
+let shotResize = null;          // { key, i, fig, left, panelW, w } while a grip is dragged
+
+questionsEl.addEventListener("pointerdown", e => {
+  const grip = e.target.closest && e.target.closest(".qshot-grip");
+  if (!grip || e.button !== 0) return;
+  const fig = grip.closest(".qshot"), panel = grip.closest(".qshots-panel");
+  const pr = panel && panel.getBoundingClientRect();
+  if (!fig || !pr || !(pr.width > 0) || !panel.offsetWidth) return;
+  // The width the figure's percentage will resolve against is the panel's *content* box; the
+  // panel is indented to line up with the row's text, and measuring its border box instead
+  // would leave the thumbnail trailing the pointer by that indent. offsetWidth is the same
+  // box as the rect but unzoomed, so their quotient converts the padding into client pixels.
+  const cs = getComputedStyle(panel), z = pr.width / panel.offsetWidth;
+  const pad = ((parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0)) * z;
+  // The left edge is read once: a thumbnail that stops wrapping mid-drag would otherwise
+  // move out from under the pointer.
+  shotResize = { key: grip.dataset.key, i: Number(grip.dataset.i), fig: fig,
+                 left: fig.getBoundingClientRect().left, panelW: pr.width - pad, w: null };
+  try { grip.setPointerCapture(e.pointerId); } catch (err) {}
+  e.preventDefault();           // no text selection, and no focus leaving the comment box
+});
+
+questionsEl.addEventListener("pointermove", e => {
+  if (!shotResize) return;
+  const w = Math.min(1, Math.max(SHOT_MIN_W,
+                                 (e.clientX - shotResize.left) / shotResize.panelW));
+  shotResize.w = w;
+  shotResize.fig.classList.add("sized");
+  shotResize.fig.style.width = (w * 100) + "%";
+});
+
+questionsEl.addEventListener("pointerup", () => {
+  const r = shotResize;
+  shotResize = null;
+  if (r && r.w !== null) setShotWidth(r.key, r.i, r.w);
+});
+
+// A press that ends in nothing (a cancelled gesture) leaves the model alone; the panel is
+// repainted so the live width goes back to what is stored.
+questionsEl.addEventListener("pointercancel", () => {
+  const r = shotResize;
+  shotResize = null;
+  if (r) paintShots(r.key);
+});
+
+// Double-clicking the grip gives the capture its natural size back.
+questionsEl.addEventListener("dblclick", e => {
+  const grip = e.target.closest && e.target.closest(".qshot-grip");
+  if (grip) setShotWidth(grip.dataset.key, Number(grip.dataset.i), undefined);
+});
 
 // Edit, remove or reorder a question/group via its row buttons (delegated so it covers
 // re-renders). Remove and the arrows are only rendered on the row being edited.
