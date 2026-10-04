@@ -4949,6 +4949,39 @@ divider.addEventListener("pointercancel", endDrag);
 
 updateNavButtons();
 refreshPositionButton();
+
+// =====================================================================
+// A pre-loaded link
+// =====================================================================
+
+// ?pdf=…&grades=… opens those two files from this same site, exactly as if they had been
+// picked in the two file dialogs (see examples/example.html, which is nothing but such a
+// link). Paths are relative to *this* file, which sits at the root of the site — hence
+// "examples/lot.pdf", not "lot.pdf". Anything off-origin is refused: a link must not be able
+// to make someone's browser fetch a stranger's file.
+async function fetchSameOrigin(path) {
+  const url = new URL(path, location.href);
+  if (url.origin !== location.origin) throw new Error("not part of this site: " + path);
+  const res = await fetch(url.href);
+  if (!res.ok) throw new Error(path + ": " + res.status + " " + res.statusText);
+  return res.arrayBuffer();
+}
+
+// fetch needs http(s), so a page opened straight off the disk (file://) ends in the alert
+// below. That costs the ordinary offline use nothing: with no parameters nothing is fetched.
+(async function openFromQuery() {
+  const q = new URLSearchParams(location.search);
+  const grades = q.get("grades"), pdf = q.get("pdf");
+  if (!grades && !pdf) return;
+  try {
+    // The save file first: renderPdf ends on the current student's recorded page, so the
+    // PDF then opens on the first student's copy instead of page 1.
+    if (grades) loadGradesWorkbook(await fetchSameOrigin(grades));
+    if (pdf) await renderPdf(await fetchSameOrigin(pdf), pdf.split("/").pop());
+  } catch (err) {
+    alert("Could not open the linked files: " + (err && err.message ? err.message : err));
+  }
+})();
 </script>
 </body>
 </html>
