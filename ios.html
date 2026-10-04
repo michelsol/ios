@@ -289,6 +289,58 @@
     font-size: 14px;
   }
   #comboPopup.open { display: block; }
+  /* The rectangle being dragged over the PDF. Fixed and click-through: the pane keeps
+     getting the pointer, and nothing in the pane's layout moves. */
+  #capBand {
+    position: fixed;
+    z-index: 1050;
+    display: none;
+    pointer-events: none;
+    border: 1px solid var(--accent);
+    background: rgba(37, 99, 235, 0.12);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.6);
+  }
+  /* The red-pen editor. Above #comboPopup (1000), so no suggestion list can hang over it. */
+  #annBack {
+    position: fixed; inset: 0; z-index: 1100; display: none;
+    background: rgba(15, 23, 42, 0.55);
+  }
+  #annBack.open { display: block; }
+  #annBox {
+    position: fixed; z-index: 1101; display: none;
+    top: 50%; left: 50%; transform: translate(-50%, -50%);
+    max-width: 94vw; max-height: 92vh;
+    flex-direction: column; gap: 10px;
+    padding: 12px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+  }
+  #annBox.open { display: flex; }
+  #annStage { position: relative; align-self: center; line-height: 0; background: #fff; }
+  #annBase { display: block; max-width: 88vw; max-height: 74vh; }
+  /* The ink layer covers the base exactly, at the same bitmap size but the displayed one,
+     so a point on screen means the same pixel in both. */
+  #annInk {
+    position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+    cursor: crosshair; touch-action: none;
+  }
+  #annBar { display: flex; align-items: center; gap: 8px; }
+  #annGap { flex: 1 1 auto; }
+  #annPens { display: flex; align-items: center; gap: 4px; margin-right: 4px; }
+  .annw {
+    width: 30px; height: 30px; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: 1px solid var(--border); border-radius: 6px;
+    background: #fff; cursor: pointer;
+  }
+  .annw:hover { border-color: #c7d7f5; background: #f0f5ff; }
+  .annw.on { border-color: var(--accent); background: #e4edff; box-shadow: inset 0 2px 3px rgba(0,0,0,0.18); }
+  .annw i { display: block; border-radius: 50%; background: #e11d48; }
+  .annw[data-w="0.55"] i { width: 4px; height: 4px; }
+  .annw[data-w="1"] i { width: 7px; height: 7px; }
+  .annw[data-w="1.9"] i { width: 11px; height: 11px; }
   .combo-item {
     position: relative;                  /* carries .combo-fill */
     display: flex;
@@ -505,7 +557,7 @@
   }
   /* The edited row's two icon toggles: the pencil, and "applies to all students". Both are
      raised while off and pushed in while on, like a score key. */
-  .qedit, .forall-toggle {
+  .qedit, .forall-toggle, .qcapture, .qshots {
     flex: 0 0 auto;
     align-self: center;
     display: flex; align-items: center; justify-content: center;
@@ -518,13 +570,47 @@
   }
   .qedit svg { width: 15px; height: 15px; }
   .forall-toggle svg { width: 17px; height: 17px; }
-  .qedit:hover, .forall-toggle:hover { color: var(--accent); border-color: #c7d7f5; background: #f0f5ff; }
-  .qedit.on, .forall-toggle.on {         /* pressed in, like a chosen score key */
+  .qcapture svg, .qshots svg { width: 16px; height: 16px; }
+  .qedit:hover, .forall-toggle:hover, .qcapture:hover, .qshots:hover {
+    color: var(--accent); border-color: #c7d7f5; background: #f0f5ff;
+  }
+  .qedit.on, .forall-toggle.on, .qcapture.on, .qshots.on {   /* pressed in, like a chosen score key */
     color: var(--accent);
     border-color: var(--accent);
     background: #e4edff;
     box-shadow: inset 0 2px 3px rgba(0,0,0,0.18);
   }
+  /* The count rides on the picture icon, so the row's width barely changes. */
+  .qshots { position: relative; }
+  .qshots-n {
+    position: absolute; top: 1px; right: 2px;
+    font-size: 9px; font-weight: 700; line-height: 1; color: var(--accent);
+  }
+  /* The captures, on their own line: .question is a wrapping flex row, so a 100% basis
+     child is pushed below everything else in it. 11px lines the panel up with the row's
+     text (the questions' border-left + padding-left). */
+  .qshots-panel { flex: 0 0 100%; display: none; }
+  .qshots-panel.open { display: flex; flex-wrap: wrap; gap: 8px; padding: 2px 0 4px 11px; }
+  .qshot { position: relative; line-height: 0; }
+  .qshot-img {
+    display: block;
+    max-width: 100%; max-height: 220px; width: auto; height: auto;
+    border: 1px solid var(--border); border-radius: 4px;
+    background: #fff; cursor: crosshair;
+  }
+  .qshot-edit, .qshot-del {
+    position: absolute; top: 3px;
+    width: 22px; height: 22px; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: 1px solid var(--border); border-radius: 5px;
+    background: rgba(255, 255, 255, 0.9);
+    color: var(--muted); font-size: 12px; line-height: 1; cursor: pointer;
+  }
+  .qshot-edit svg { width: 13px; height: 13px; }
+  .qshot-edit { right: 29px; }
+  .qshot-del { right: 3px; }
+  .qshot-edit:hover { color: var(--accent); border-color: #c7d7f5; }
+  .qshot-del:hover { color: #b91c1c; border-color: #f1c6c6; }
   /* Group separator inside the question list: a labelled line carrying the subtotal. */
   .qgroup {
     display: flex;
@@ -822,6 +908,28 @@
 <!-- Shared suggestion popup for every question's comment combobox -->
 <div id="comboPopup"></div>
 
+<!-- The live rectangle while capturing from the PDF. Fixed, so that it cannot affect
+     canvas.offsetTop, which every PDF scroll-position helper is built on. -->
+<div id="capBand"></div>
+
+<!-- The red-pen editor for a captured rectangle (one of each, like #comboPopup) -->
+<div id="annBack"></div>
+<div id="annBox" role="dialog" aria-label="Mark up the capture">
+  <div id="annStage"><canvas id="annBase"></canvas><canvas id="annInk"></canvas></div>
+  <div id="annBar">
+    <span id="annPens">
+      <button type="button" class="annw" data-w="0.55" title="Thin pen"><i></i></button>
+      <button type="button" class="annw on" data-w="1" title="Medium pen"><i></i></button>
+      <button type="button" class="annw" data-w="1.9" title="Thick pen"><i></i></button>
+    </span>
+    <button type="button" class="secondary" id="annUndo">Undo</button>
+    <button type="button" class="secondary" id="annClear">Clear</button>
+    <span id="annGap"></span>
+    <button type="button" class="secondary" id="annCancel">Cancel</button>
+    <button type="button" id="annOk">Attach</button>
+  </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <!-- SheetJS (CDN), used to read/write the .ods save format. The "full" build is
      required (it bundles the ODS codecs; the "mini" build does not). To run fully
@@ -856,6 +964,18 @@ let editingDraft = null;       // { title, scores, split, group } of a question 
 let students = [];             // ["e1", "e2", ...]
 let gradesByStudent = {};      // { name: { title: selectedScore } }
 let commentsByStudent = {};    // { name: { title: commentString } }
+// Captured PDF rectangles, annotated in red, hung off a question's comment. Same shape as
+// commentsByStudent (so every lifecycle site is mirrored one line apart), but the values are
+// arrays: a question may carry several captures. Each is a flattened PNG data URL.
+let imagesByStudent = {};      // { name: { qKey: ["data:image/png;base64,...", ...] } }
+// Which questions have their capture thumbnails unfolded. View state, never saved — and kept
+// here rather than in the DOM because renderQuestions() rebuilds the whole list on every
+// student switch, which would otherwise fold every panel shut.
+const openShots = new Set();   // qKeys
+// A capture in progress, and the red-pen editor. Both are at most one at a time, and both
+// are read while a question row is built, so they are declared with the rest of the state.
+let capState = null;           // { key, canvas, ax, ay, dragging, pid, pane } while armed
+let annState = null;           // the request the editor is open on: { key, mode, i? }
 let feedbackByStudent = {};    // { name: globalFeedbackString }
 let scrollPosByStudent = {};   // { name: where the PDF was last left for them, as a fractional page
                                //   at the top of the pane (e.g. 3.25); also orders students by PDF }
@@ -923,6 +1043,59 @@ function twoColMap(rows) {
     if (key) map[key] = cell(row, 1);
   }
   return map;
+}
+
+// ---- Captured images in the save file ----
+// The PNGs themselves are stored as real files inside the .ods (which is a zip, see
+// addPicturesToOds); the Comment_images sheet only says which question each file belongs to:
+//   [student name, question key, image index (1-based), path inside the zip]
+const PIC_DIR = "Pictures/";
+const PNG_PREFIX = "data:image/png;base64,";
+
+// Walk every student's captures in question order, naming each file as we go. Returns the
+// sheet rows and the files to put in the zip, which must agree — so both come from here.
+function collectImages() {
+  const rows = [], pics = [];
+  for (const name of students) {
+    const byQ = imagesByStudent[name];
+    if (!byQ) continue;
+    for (const q of schemeFor(name)) {
+      const key = qKey(q), arr = byQ[key];
+      if (!arr || !arr.length) continue;
+      arr.forEach((url, i) => {
+        if (String(url).indexOf(PNG_PREFIX) !== 0) return;
+        const path = PIC_DIR + "img" + String(pics.length + 1).padStart(4, "0") + ".png";
+        pics.push({ path: path, b64: url.slice(PNG_PREFIX.length) });
+        rows.push([name, key, i + 1, path]);
+      });
+    }
+  }
+  return { rows: rows, pics: pics };
+}
+
+// Rebuild imagesByStudent from the Comment_images rows plus the files pulled out of the zip
+// ({ path: dataURL }). Rows whose file is missing are dropped; unlike comments, keys that are
+// no longer in the student's scheme are KEPT — an orphan costs only bytes, while discarding a
+// hand-annotated capture because a question was briefly renamed cannot be undone.
+function parseImageRows(rows, byPath) {
+  const out = {};
+  const seen = {};                       // name -> key -> { index: dataURL }
+  for (const row of rows || []) {
+    const name = cell(row, 0), key = cell(row, 1);
+    const idx = parseInt(cell(row, 2), 10);
+    const url = byPath[cell(row, 3)];
+    if (!name || !key || !(idx >= 1) || !url) continue;
+    const byQ = seen[name] || (seen[name] = {});
+    (byQ[key] || (byQ[key] = {}))[idx] = url;
+  }
+  for (const name of Object.keys(seen)) {
+    const byQ = out[name] = {};
+    for (const key of Object.keys(seen[name])) {
+      const slots = seen[name][key];
+      byQ[key] = Object.keys(slots).map(Number).sort((a, b) => a - b).map(i => slots[i]);
+    }
+  }
+  return out;
 }
 
 // Parse a per-student "alternating" sheet: a header row (student name, then that
@@ -1324,10 +1497,11 @@ function addQuestionToStudent(name, spec) {
   if (name) {
     if (!gradesByStudent[name]) gradesByStudent[name] = {};
     if (!commentsByStudent[name]) commentsByStudent[name] = {};
+    if (!imagesByStudent[name]) imagesByStudent[name] = {};
   }
 }
 
-// Remove a question (and its grade/comment) from one student's scheme, by key.
+// Remove a question (and its grade/comment/captures) from one student's scheme, by key.
 function removeQuestionFromStudent(name, key) {
   const scheme = schemeFor(name);
   const idx = scheme.findIndex(q => qKey(q) === key);
@@ -1335,7 +1509,9 @@ function removeQuestionFromStudent(name, key) {
   if (name) {
     if (gradesByStudent[name]) delete gradesByStudent[name][key];
     if (commentsByStudent[name]) delete commentsByStudent[name][key];
+    if (imagesByStudent[name]) delete imagesByStudent[name][key];
   }
+  openShots.delete(key);
 }
 
 // Rebuild `questionGroups` (the combobox suggestion list) from the groups actually
@@ -1372,9 +1548,12 @@ function editQuestionInScheme(name, oldKey, next) {
   if (!name) return;
   const grades = gradesByStudent[name];
   const comments = commentsByStudent[name];
+  const images = imagesByStudent[name];
   if (newKey !== oldKey) {
     if (grades && oldKey in grades) { grades[newKey] = grades[oldKey]; delete grades[oldKey]; }
     if (comments && oldKey in comments) { comments[newKey] = comments[oldKey]; delete comments[oldKey]; }
+    if (images && oldKey in images) { images[newKey] = images[oldKey]; delete images[oldKey]; }
+    if (openShots.delete(oldKey)) openShots.add(newKey);   // keep the panel unfolded
   }
 }
 
@@ -1442,6 +1621,7 @@ function commitEdit() {
 // rejected row stays open and this one does not.
 function beginEdit(key) {
   if (commitEdit() === false) return;
+  cancelCapture();            // the key being edited is the one a capture would attach to
   editingKey = key;
   editingDraft = null;
   renderQuestions();
@@ -1570,7 +1750,9 @@ function removeGroupFromStudent(name, group) {
     if (name) {
       if (gradesByStudent[name]) delete gradesByStudent[name][key];
       if (commentsByStudent[name]) delete commentsByStudent[name][key];
+      if (imagesByStudent[name]) delete imagesByStudent[name][key];
     }
+    openShots.delete(key);
   }
 }
 
@@ -1813,8 +1995,15 @@ function buildQuestionBlock(q, disableUp, disableDown, isDraft) {
     combo.appendChild(comment);
     block.appendChild(combo);
 
+    block.appendChild(buildCaptureButton(key));
+    const shotsBtn = buildShotsButton(key);
+    if (shotsBtn) block.appendChild(shotsBtn);
+
     // Reordering and removing live in edit mode; grading rows stay uncluttered.
     block.appendChild(buildEditToggle(key, false));
+
+    // Last, and full width: the thumbnails wrap onto their own line under the row.
+    block.appendChild(buildShotsPanel(key));
 
     return block;
 }
@@ -1850,6 +2039,147 @@ function buildForAllToggle() {
   btn.appendChild(svg);
 
   return btn;
+}
+
+// ---- Captured rectangles on a question row ----
+// Two buttons sit between the comment box and the pencil: one arms a capture, one folds the
+// thumbnails open. The thumbnails live in a panel that is the row's last child and spans the
+// whole row (.question wraps), so it reads as a second line under the question.
+
+// A fresh icon node, built like editIcon(): `body` is the SVG's inner markup.
+function svgIcon(body) {
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "2");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+  svg.setAttribute("aria-hidden", "true");
+  svg.innerHTML = body;
+  return svg;
+}
+
+// Crop marks: what the capture button offers.
+function cropIcon() {
+  return svgIcon('<path d="M6 2v16a2 2 0 0 0 2 2h14"/><path d="M2 6h16a2 2 0 0 1 2 2v14"/>');
+}
+
+// A picture: what the fold button reveals.
+function imageIcon() {
+  return svgIcon('<rect x="3" y="4" width="18" height="16" rx="2"/>' +
+                 '<circle cx="8.5" cy="9.5" r="1.4"/><path d="M21 15l-5-4L5 20"/>');
+}
+
+// This student's captures for one question (never null, never shared).
+function shotsFor(key) {
+  const byQ = currentStudent ? imagesByStudent[currentStudent] : null;
+  return (byQ && byQ[key]) || [];
+}
+
+// The capture button. Always present, pressed in while it is the armed one.
+function buildCaptureButton(key) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "qcapture" + (capState && capState.key === key ? " on" : "");
+  btn.title = "Capture a rectangle from the PDF and mark it in red";
+  btn.dataset.key = key;
+  btn.appendChild(cropIcon());
+  return btn;
+}
+
+// The fold button — only on a question that has captures, so untouched rows look as before.
+function buildShotsButton(key) {
+  const n = shotsFor(key).length;
+  if (!n) return null;
+  const open = openShots.has(key);
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "qshots" + (open ? " on" : "");
+  btn.title = (open ? "Hide " : "Show ") + (n === 1 ? "the captured image" : n + " captured images");
+  btn.dataset.key = key;
+  btn.setAttribute("aria-expanded", open ? "true" : "false");
+  btn.appendChild(imageIcon());
+  if (n > 1) {
+    const badge = document.createElement("span");
+    badge.className = "qshots-n";
+    badge.textContent = n;
+    btn.appendChild(badge);
+  }
+  return btn;
+}
+
+// The row's last child: the thumbnails, shown only while unfolded.
+function buildShotsPanel(key) {
+  const panel = document.createElement("div");
+  panel.className = "qshots-panel" + (openShots.has(key) ? " open" : "");
+  panel.dataset.key = key;
+  fillShotsPanel(panel, key);
+  return panel;
+}
+
+function fillShotsPanel(panel, key) {
+  panel.innerHTML = "";
+  shotsFor(key).forEach((src, i) => {
+    const fig = document.createElement("div");
+    fig.className = "qshot";
+    const img = document.createElement("img");
+    img.className = "qshot-img";
+    img.src = src;
+    img.alt = "";
+    img.title = "Draw on this capture";
+    img.dataset.key = key;
+    img.dataset.i = i;
+    fig.appendChild(img);
+    const act = (cls, title, label) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = cls;
+      btn.title = title;
+      btn.dataset.key = key;
+      btn.dataset.i = i;
+      if (label) btn.textContent = label;
+      else btn.appendChild(editIcon());
+      fig.appendChild(btn);
+    };
+    act("qshot-edit", "Draw on this capture", null);
+    act("qshot-del", "Remove this capture", "✕");
+    panel.appendChild(fig);
+  });
+}
+
+// Repaint one row's capture controls in place. The whole list is not re-rendered because
+// that would close an open combo and lose the caret in a half-typed comment.
+function paintShots(key) {
+  const row = questionsEl.querySelector('.question[data-key="' + cssEscape(key) + '"]');
+  if (!row || row.classList.contains("editing")) return;
+  const old = row.querySelector(".qshots");
+  const next = buildShotsButton(key);
+  if (old && next) old.replaceWith(next);
+  else if (old) old.remove();
+  else if (next) row.insertBefore(next, row.querySelector(".qedit"));  // the pencil stays last
+  const panel = row.querySelector(".qshots-panel");
+  if (!panel) return;
+  fillShotsPanel(panel, key);
+  panel.classList.toggle("open", openShots.has(key) && shotsFor(key).length > 0);
+}
+
+function toggleShots(key) {
+  if (openShots.has(key)) openShots.delete(key);
+  else openShots.add(key);
+  paintShots(key);
+}
+
+function removeShot(key, i) {
+  const arr = shotsFor(key);
+  if (!arr.length || !(i >= 0) || i >= arr.length) return;
+  arr.splice(i, 1);
+  if (!arr.length) {
+    delete imagesByStudent[currentStudent][key];
+    openShots.delete(key);
+  }
+  paintShots(key);
 }
 
 // The pencil toggle that opens a question for editing (and, pressed, applies it).
@@ -2250,6 +2580,7 @@ function recomputeTotal() {
 // of questions, so the question DOM must be rebuilt, not just re-applied).
 function switchToStudent(name) {
   saveCurrentStudent();
+  cancelCapture();            // an armed capture belongs to the student it was armed on
   editingKey = null;          // an open edit row belongs to the student it was opened on
   editingDraft = null;
   currentStudent = name || "";
@@ -2280,6 +2611,7 @@ function addStudent() {
   schemeByStudent[name] = scheme;
   gradesByStudent[name] = {};   // every question starts ungraded
   commentsByStudent[name] = {};
+  imagesByStudent[name] = {};
   feedbackByStudent[name] = "";
   const group = studentGroupInput.value.trim();  // the group box's value (often the previous student's)
   if (group) groupByStudent[name] = group;
@@ -2302,6 +2634,7 @@ function addStudents(names) {
     schemeByStudent[name] = cloneScheme(scheme);
     gradesByStudent[name] = {};
     commentsByStudent[name] = {};
+    imagesByStudent[name] = {};
     feedbackByStudent[name] = "";
     if (group) groupByStudent[name] = group;
     added.push(name);
@@ -2322,6 +2655,7 @@ function removeStudent() {
   delete schemeByStudent[currentStudent];
   delete gradesByStudent[currentStudent];
   delete commentsByStudent[currentStudent];
+  delete imagesByStudent[currentStudent];
   delete feedbackByStudent[currentStudent];
   delete scrollPosByStudent[currentStudent];
   delete groupByStudent[currentStudent];
@@ -2375,6 +2709,8 @@ function loadGradesWorkbook(buf) {
     gradingScheme: sheet("Grading_Scheme"),
     grades:        sheet("Grades"),
     comments:      sheet("Comments"),
+    commentImages: sheet("Comment_images"),  // absent in older files -> no captures
+    pictures:      readOdsPictures(buf),      // the PNGs that sheet points at
   });
 }
 
@@ -2391,6 +2727,8 @@ function loadWorkbook(s) {
   schemeQuestions = [];
   gradesByStudent = {};
   commentsByStudent = {};
+  imagesByStudent = {};
+  openShots.clear();
   feedbackByStudent = {};
   scrollPosByStudent = {};
   groupByStudent = {};
@@ -2439,6 +2777,7 @@ function loadWorkbook(s) {
     const scheme = schemeByStudent[name] = buildScheme(name);
     const grades = gradesByStudent[name] = {};
     const comments = commentsByStudent[name] = {};
+    imagesByStudent[name] = {};
     feedbackByStudent[name] = fbMap[name] || "";
     const pos = parseFloat(posMap[name]);
     if (pos >= 1) scrollPosByStudent[name] = pos;
@@ -2455,6 +2794,11 @@ function loadWorkbook(s) {
       delete q._h;
     }
   }
+
+  // Captures last: the keys they hang off exist by now. Kept per student even when a key
+  // is not in that student's scheme (see parseImageRows).
+  const imgs = parseImageRows(s.commentImages, s.pictures || {});
+  for (const name of names) imagesByStudent[name] = imgs[name] || {};
 
   recomputeGroups();
   editingKey = null;          // nothing from the previous file stays open
@@ -2742,6 +3086,7 @@ async function renderPdf(arrayBuffer, name) {
 // the page order (see movePage); a re-render (zoom) keeps that order.
 async function drawPages(targetPos) {
   if (!currentPdfDoc) return;
+  cancelCapture();          // every canvas is about to be replaced
   const token = ++renderToken;
   pdfRendering = true;
   pendingPdfPos = targetPos || 1;
@@ -2826,6 +3171,7 @@ function movePage(delta) {
 // takes its place.
 function deleteCurrentPage() {
   if (!currentPdfDoc || pdfRendering || pageCanvases.length < 2) return;
+  cancelCapture();          // this removes a canvas without a re-render
   const n = currentVisiblePage();
   if (!confirm("Delete page " + n + " from the PDF?")) return;
   const [canvas] = pageCanvases.splice(n - 1, 1);
@@ -3063,8 +3409,564 @@ function currentVisiblePage() {
 }
 
 // =====================================================================
+// Capture a rectangle of the PDF and mark it in red
+// =====================================================================
+// Pressing a question's capture button arms a drag over the PDF; the rectangle it selects is
+// re-rendered from the PDF, opened in the red-pen editor, and attached to that question.
+//
+// Everything here works in a canvas's own pixels ("bitmap space"), never in client pixels:
+// #pdfPane canvas has max-width: 100%, so a page wider than the pane is drawn at one size and
+// displayed at another, and the pane can scroll under the pointer mid-drag. Keeping the
+// anchor in bitmap space makes both of those non-issues.
+
+const capBand = document.getElementById("capBand");
+const annBack = document.getElementById("annBack");
+const annBox = document.getElementById("annBox");
+const annStage = document.getElementById("annStage");
+const annBase = document.getElementById("annBase");
+const annInk = document.getElementById("annInk");
+const annUndo = document.getElementById("annUndo");
+
+const MIN_CAP_CSS = 8;          // a drag smaller than this (on either side) was a stray click
+const CAPTURE_SCALE = 3.0;      // twice the app's 100% (PDF_BASE_SCALE), whatever the zoom is
+const CAPTURE_MAX_PX = 1.5e6;   // ~1500x1000: the ceiling for a whole-page drag
+const PEN_COLOR = "#e11d48";
+
+// A point in a canvas's own pixels, clamped to it. Null when the element has no box yet
+// (never laid out, detached, or a test environment without layout).
+function bmPoint(canvas, clientX, clientY) {
+  const r = canvas.getBoundingClientRect();
+  if (!(r.width > 0 && r.height > 0)) return null;
+  return {
+    x: Math.min(canvas.width, Math.max(0, (clientX - r.left) * canvas.width / r.width)),
+    y: Math.min(canvas.height, Math.max(0, (clientY - r.top) * canvas.height / r.height)),
+  };
+}
+
+// Two bitmap points -> a whole-pixel rectangle inside the bitmap. Pure arithmetic.
+function bmRect(cw, ch, ax, ay, bx, by) {
+  const x0 = Math.max(0, Math.floor(Math.min(ax, bx)));
+  const y0 = Math.max(0, Math.floor(Math.min(ay, by)));
+  const x1 = Math.min(cw, Math.ceil(Math.max(ax, bx)));
+  const y1 = Math.min(ch, Math.ceil(Math.max(ay, by)));
+  return { x: x0, y: y0, w: Math.max(1, x1 - x0), h: Math.max(1, y1 - y0) };
+}
+
+// ---- Arming ----
+
+function paintCaptureArmed() {
+  const key = capState ? capState.key : null;
+  questionsEl.querySelectorAll(".qcapture").forEach(b => {
+    b.classList.toggle("on", b.dataset.key === key);
+  });
+}
+
+function toggleCaptureArm(key) {
+  if (capState && capState.key === key) { cancelCapture(); return; }   // pressed again: disarm
+  cancelCapture();
+  if (!currentStudent) { alert("Select a student before capturing from their PDF."); return; }
+  if (!currentPdfDoc || pageCanvases.length === 0) { alert("Open a PDF first."); return; }
+  if (pdfRendering) return;                 // the pages are still being drawn
+  if (totalImageChars() > IMG_HARD_CAP) {
+    alert("There are already too many captured images to save safely. Remove some first.");
+    return;
+  }
+  capState = { key: key, canvas: null, ax: 0, ay: 0, dragging: false, pid: -1, pane: null };
+  closeCombo();                             // nothing should hang over the PDF
+  pdfPane.style.cursor = "crosshair";
+  pdfPane.style.touchAction = "none";       // a finger drag selects instead of scrolling
+  paintCaptureArmed();
+}
+
+function cancelCapture() {
+  if (!capState) return;
+  if (capState.dragging) {
+    try { pdfPane.releasePointerCapture(capState.pid); } catch (err) { /* already gone */ }
+  }
+  capState = null;
+  capBand.style.display = "none";
+  pdfPane.style.cursor = "";
+  pdfPane.style.touchAction = "";
+  document.body.style.cursor = "";
+  document.body.style.userSelect = "";
+  paintCaptureArmed();
+}
+
+// ---- The drag ----
+
+// Place the rubber band, in client coordinates (it is position: fixed), clipped to the part
+// of the pane that is actually visible. The anchor's client position is recomputed from the
+// canvas every time, which is what lets the page scroll mid-drag.
+function drawBand(clientX, clientY) {
+  const c = capState.canvas;
+  if (!c || !c.isConnected) { cancelCapture(); return; }
+  const r = c.getBoundingClientRect();
+  if (!(r.width > 0 && r.height > 0)) return;
+  const ax = r.left + capState.ax * r.width / c.width;
+  const ay = r.top + capState.ay * r.height / c.height;
+  const bx = Math.min(r.right, Math.max(r.left, clientX));
+  const by = Math.min(r.bottom, Math.max(r.top, clientY));
+  const p = capState.pane;
+  const l = Math.max(Math.min(ax, bx), p.left), t = Math.max(Math.min(ay, by), p.top);
+  const rr = Math.min(Math.max(ax, bx), p.right), b = Math.min(Math.max(ay, by), p.bottom);
+  if (rr <= l || b <= t) { capBand.style.display = "none"; return; }
+  capBand.style.display = "block";
+  capBand.style.left = l + "px";
+  capBand.style.top = t + "px";
+  capBand.style.width = (rr - l) + "px";
+  capBand.style.height = (b - t) + "px";
+}
+
+pdfPane.addEventListener("pointerdown", e => {
+  if (!capState || capState.dragging) return;      // not armed: the pane behaves as before
+  if (e.button !== 0) return;
+  const canvas = e.target.closest && e.target.closest("canvas");
+  if (!canvas || pageCanvases.indexOf(canvas) < 0) return;   // the gaps are not a page
+  const p = bmPoint(canvas, e.clientX, e.clientY);
+  if (!p) return;
+  capState.canvas = canvas;
+  capState.ax = p.x;
+  capState.ay = p.y;
+  capState.dragging = true;
+  capState.pid = e.pointerId;
+  capState.pane = pdfPane.getBoundingClientRect();
+  // Pointer capture keeps the drag alive when the cursor leaves the pane, like the divider.
+  try { pdfPane.setPointerCapture(e.pointerId); } catch (err) { /* not supported */ }
+  document.body.style.cursor = "crosshair";
+  document.body.style.userSelect = "none";
+  e.preventDefault();                              // no native drag of the canvas
+  drawBand(e.clientX, e.clientY);
+});
+
+pdfPane.addEventListener("pointermove", e => {
+  if (capState && capState.dragging) drawBand(e.clientX, e.clientY);
+});
+
+pdfPane.addEventListener("pointercancel", () => { if (capState) cancelCapture(); });
+
+pdfPane.addEventListener("pointerup", e => {
+  if (!capState || !capState.dragging) return;
+  const key = capState.key, c = capState.canvas, ax = capState.ax, ay = capState.ay;
+  const r = c.isConnected ? c.getBoundingClientRect() : null;
+  const p = r && r.width > 0 ? bmPoint(c, e.clientX, e.clientY) : null;
+  const small = !p ||
+    Math.abs(e.clientX - (r.left + ax * r.width / c.width)) < MIN_CAP_CSS ||
+    Math.abs(e.clientY - (r.top + ay * r.height / c.height)) < MIN_CAP_CSS;
+  const rect = p ? bmRect(c.width, c.height, ax, ay, p.x, p.y) : null;
+  cancelCapture();                                 // disarm before the (async) render
+  if (small) return;                               // a click, or a page that went away
+  captureRegion(c, rect)
+    .then(canvas => openAnnotator({ key: key, canvas: canvas, mode: "new" }))
+    .catch(err => alert("Could not capture that region: " + (err && err.message ? err.message : err)));
+});
+
+// ---- Turning the selection into a bitmap ----
+
+// Re-render just the selected rectangle from the PDF at a fixed scale, so a capture looks the
+// same whatever zoom it was taken at (at 40% the on-screen pixels would be far too coarse to
+// print). Falls back to cropping what is on screen if the re-render cannot be done.
+async function captureRegion(canvas, rect) {
+  const sDisp = PDF_BASE_SCALE * pdfZoom;          // the scale this bitmap was drawn at
+  let r = CAPTURE_SCALE / sDisp;                   // bitmap pixels -> capture pixels
+  const px = rect.w * rect.h * r * r;
+  if (px > CAPTURE_MAX_PX) r *= Math.sqrt(CAPTURE_MAX_PX / px);
+  r = Math.min(r, 4);
+  const out = document.createElement("canvas");
+  out.width = Math.max(1, Math.round(rect.w * r));
+  out.height = Math.max(1, Math.round(rect.h * r));
+  const ctx = out.getContext("2d");
+  if (!ctx) throw new Error("this browser gave no 2D canvas");
+  ctx.fillStyle = "#fff";                          // pdf.js draws no page background
+  ctx.fillRect(0, 0, out.width, out.height);
+  try {
+    if (!currentPdfDoc) throw new Error("no PDF loaded");
+    const page = await currentPdfDoc.getPage(+canvas.dataset.page);
+    // The same rotation as renderPageInto, so the crop lands where the drag was.
+    const rotation = (page.rotate + (pageRotation[page.pageNumber] || 0)) % 360;
+    const viewport = page.getViewport({ scale: sDisp * r, rotation: rotation });
+    // `transform` applies before the viewport's, in its pixels: shift the page so the
+    // rectangle's top-left corner lands on (0, 0) of this small canvas.
+    await page.render({
+      canvasContext: ctx,
+      viewport: viewport,
+      transform: [1, 0, 0, 1, -rect.x * r, -rect.y * r],
+    }).promise;
+  } catch (err) {
+    // Good enough beats nothing: crop the pixels already on screen.
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, out.width, out.height);
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(canvas, rect.x, rect.y, rect.w, rect.h, 0, 0, out.width, out.height);
+  }
+  return out;
+}
+
+// ---- The red-pen editor ----
+
+let penScale = 1;               // chosen thickness, remembered between captures
+let annStrokes = [];            // [{ w, pts: [{x, y}, ...] }] in the base bitmap's pixels
+let annCur = null;              // the stroke being drawn
+let annInkRaf = null;
+
+// Thickness in bitmap pixels: derived from the image's own size, so the pen looks the same
+// on any capture, and stored per stroke so a replay is exact.
+function penWidth() {
+  return Math.max(1.5, annBase.width / 220 * penScale);
+}
+
+function redrawInk() {
+  if (annUndo) annUndo.disabled = annStrokes.length === 0;
+  const ctx = annInk.getContext && annInk.getContext("2d");
+  if (!ctx) return;             // no canvas support (tests): the strokes are still recorded
+  ctx.clearRect(0, 0, annInk.width, annInk.height);
+  ctx.strokeStyle = PEN_COLOR;
+  ctx.fillStyle = PEN_COLOR;
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  for (const s of annStrokes) {
+    const p = s.pts;
+    ctx.lineWidth = s.w;
+    if (p.length === 1) {       // a tap marks a spot
+      ctx.beginPath();
+      ctx.arc(p[0].x, p[0].y, s.w / 2, 0, Math.PI * 2);
+      ctx.fill();
+      continue;
+    }
+    ctx.beginPath();
+    ctx.moveTo(p[0].x, p[0].y);
+    // Through the midpoints, with each point as the control: a smooth line out of a
+    // jittery pointer trail.
+    for (let i = 1; i < p.length - 1; i++)
+      ctx.quadraticCurveTo(p[i].x, p[i].y, (p[i].x + p[i + 1].x) / 2, (p[i].y + p[i + 1].y) / 2);
+    ctx.lineTo(p[p.length - 1].x, p[p.length - 1].y);
+    ctx.stroke();
+  }
+}
+
+// Open the editor on a fresh capture (mode "new", with its canvas) or on one already
+// attached (mode "edit", by its index). Errors are reported, never thrown at the caller.
+function openAnnotator(req) {
+  prepareAnnotator(req).catch(err =>
+    alert("Could not open that capture: " + (err && err.message ? err.message : err)));
+}
+
+async function prepareAnnotator(req) {
+  const src = req.mode === "edit" ? await loadImage(shotsFor(req.key)[req.i]) : req.canvas;
+  if (!src || !src.width || !src.height) throw new Error("there is nothing to draw on");
+  closeCombo();
+  annStrokes = [];
+  annCur = null;
+  annBase.width = src.width;
+  annBase.height = src.height;
+  annInk.width = src.width;
+  annInk.height = src.height;
+  const bctx = annBase.getContext && annBase.getContext("2d");
+  if (bctx) {
+    bctx.fillStyle = "#fff";
+    bctx.fillRect(0, 0, src.width, src.height);
+    bctx.drawImage(src, 0, 0);
+  }
+  redrawInk();
+  annState = req;
+  annBack.classList.add("open");
+  annBox.classList.add("open");
+}
+
+function loadImage(dataUrl) {
+  return new Promise((resolve, reject) => {
+    if (!dataUrl) { reject(new Error("that capture is gone")); return; }
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("the stored image could not be decoded"));
+    img.src = dataUrl;
+  });
+}
+
+// Close the editor; with `attach`, flatten the strokes into the image and keep it.
+function closeAnnotator(attach) {
+  const st = annState;
+  annState = null;
+  annBack.classList.remove("open");
+  annBox.classList.remove("open");
+  if (annInkRaf) { cancelAnimationFrame(annInkRaf); annInkRaf = null; }
+  annCur = null;
+  if (!attach || !st || !currentStudent) return;
+  const out = document.createElement("canvas");
+  out.width = annBase.width;
+  out.height = annBase.height;
+  const ctx = out.getContext && out.getContext("2d");
+  if (!ctx) return;
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, out.width, out.height);
+  ctx.drawImage(annBase, 0, 0);
+  ctx.drawImage(annInk, 0, 0);        // the strokes are baked in from here on
+  const url = out.toDataURL("image/png");
+  if (totalImageChars() + url.length > IMG_HARD_CAP) {
+    alert("Keeping this capture would make the save file too big. Remove some captures first.");
+    return;
+  }
+  const byQ = imagesByStudent[currentStudent] || (imagesByStudent[currentStudent] = {});
+  const arr = byQ[st.key] || (byQ[st.key] = []);
+  if (st.mode === "edit" && st.i >= 0 && st.i < arr.length) arr[st.i] = url;
+  else arr.push(url);
+  openShots.add(st.key);              // show what was just made
+  paintShots(st.key);
+}
+
+annInk.addEventListener("pointerdown", e => {
+  if (!annState) return;
+  const p = bmPoint(annInk, e.clientX, e.clientY);
+  if (!p) return;
+  try { annInk.setPointerCapture(e.pointerId); } catch (err) { /* not supported */ }
+  annCur = { w: penWidth(), pts: [p] };
+  annStrokes.push(annCur);
+  e.preventDefault();
+  redrawInk();
+});
+
+annInk.addEventListener("pointermove", e => {
+  if (!annCur) return;
+  const p = bmPoint(annInk, e.clientX, e.clientY);
+  if (!p) return;
+  const last = annCur.pts[annCur.pts.length - 1];
+  if (Math.abs(p.x - last.x) < 1 && Math.abs(p.y - last.y) < 1) return;
+  annCur.pts.push(p);
+  if (annInkRaf) return;              // one repaint per frame, like the PDF scroll handler
+  annInkRaf = requestAnimationFrame(() => { annInkRaf = null; redrawInk(); });
+});
+
+function endStroke(e) {
+  if (!annCur) return;
+  try { annInk.releasePointerCapture(e.pointerId); } catch (err) { /* already gone */ }
+  annCur = null;
+  redrawInk();
+}
+annInk.addEventListener("pointerup", endStroke);
+annInk.addEventListener("pointercancel", endStroke);
+
+function undoStroke() {
+  if (!annStrokes.length) return;
+  annStrokes.pop();
+  annCur = null;
+  redrawInk();
+}
+
+// =====================================================================
 // Save grades
 // =====================================================================
+
+// =====================================================================
+// Captured images inside the .ods (which is a zip)
+// =====================================================================
+// An .ods file is a zip archive, and an ODF package has a standard place for images:
+// a Pictures/ folder, listed in META-INF/manifest.xml. So the captured PNGs travel inside
+// the save file as real files — no base64 in cells (a spreadsheet cell tops out at 32,767
+// characters in Excel), no second download. The Comment_images sheet only maps a file name
+// to the question it belongs to.
+//
+// We write the spreadsheet part with `compression: false`, which makes SheetJS store every
+// entry uncompressed. That is what keeps this code small: the manifest can be patched as
+// plain text, every other entry is copied byte for byte, and nothing here has to deflate or
+// inflate anything (a PNG is already compressed, so storing it loses nothing).
+
+const ODS_MIME = "application/vnd.oasis.opendocument.spreadsheet";
+
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let i = 0; i < 256; i++) {
+    let c = i;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[i] = c >>> 0;
+  }
+  return t;
+})();
+
+function crc32(bytes) {
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+
+const utf8Bytes = (s) => new TextEncoder().encode(s);
+const utf8Text = (b) => new TextDecoder().decode(b);
+const asBytes = (x) => (x instanceof Uint8Array) ? x : new Uint8Array(x);
+
+// base64 <-> bytes. The chunking keeps String.fromCharCode off the argument-count limit.
+function b64ToBytes(b64) {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+function bytesToB64(bytes) {
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 0x8000)
+    s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
+// Read a zip's central directory: one record per entry, in archive order. Returns null when
+// this is not a zip we understand (no end-of-central-directory, or a corrupt record) —
+// callers then leave the file alone rather than guessing.
+function zipEntries(buf) {
+  const b = asBytes(buf);
+  if (b.length < 22) return null;
+  const dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
+  const u16 = (p) => dv.getUint16(p, true), u32 = (p) => dv.getUint32(p, true);
+  let eocd = -1;
+  const floor = Math.max(0, b.length - 22 - 65535);     // 65535 = max zip comment length
+  for (let p = b.length - 22; p >= floor; p--) if (u32(p) === 0x06054b50) { eocd = p; break; }
+  if (eocd < 0) return null;
+  const count = u16(eocd + 10);
+  let p = u32(eocd + 16);
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    if (p + 46 > b.length || u32(p) !== 0x02014b50) return null;
+    const nlen = u16(p + 28), elen = u16(p + 30), clen = u16(p + 32);
+    out.push({
+      name: utf8Text(b.subarray(p + 46, p + 46 + nlen)),
+      method: u16(p + 10),
+      crc: u32(p + 16),
+      csize: u32(p + 20),
+      usize: u32(p + 24),
+      off: u32(p + 42),
+    });
+    p += 46 + nlen + elen + clen;
+  }
+  return out;
+}
+
+// Where an entry's (possibly compressed) bytes start, read from its local header — the
+// local header's extra field may differ in length from the central one's.
+function zipDataStart(b, e) {
+  const dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
+  if (e.off + 30 > b.length || dv.getUint32(e.off, true) !== 0x04034b50) return -1;
+  const start = e.off + 30 + dv.getUint16(e.off + 26, true) + dv.getUint16(e.off + 28, true);
+  return (start + e.csize <= b.length) ? start : -1;
+}
+
+// DOS date/time (time in the low half, date in the high half), as the zip format wants it.
+function dosDateTime(d) {
+  const t = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+  const day = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+  return ((day << 16) | t) >>> 0;
+}
+
+// Write a zip from [{ name, method, crc, usize, data }], all entries stored as given. Entry
+// order is preserved, which is what keeps ODF's "mimetype first" rule intact.
+function writeZip(files) {
+  const names = files.map(f => utf8Bytes(f.name));
+  const stamp = dosDateTime(new Date());
+  let size = 22;
+  files.forEach((f, i) => { size += 30 + names[i].length + f.data.length + 46 + names[i].length; });
+  const out = new Uint8Array(size);
+  const dv = new DataView(out.buffer);
+  const w16 = (p, v) => dv.setUint16(p, v, true), w32 = (p, v) => dv.setUint32(p, v >>> 0, true);
+  const offs = [];
+  let p = 0;
+  files.forEach((f, i) => {
+    offs.push(p);
+    w32(p, 0x04034b50); w16(p + 4, 20); w16(p + 6, 0); w16(p + 8, f.method);
+    w32(p + 10, stamp); w32(p + 14, f.crc); w32(p + 18, f.data.length); w32(p + 22, f.usize);
+    w16(p + 26, names[i].length); w16(p + 28, 0);
+    out.set(names[i], p + 30);
+    p += 30 + names[i].length;
+    out.set(f.data, p);
+    p += f.data.length;
+  });
+  const cdStart = p;
+  files.forEach((f, i) => {
+    w32(p, 0x02014b50); w16(p + 4, 20); w16(p + 6, 20); w16(p + 8, 0); w16(p + 10, f.method);
+    w32(p + 12, stamp); w32(p + 16, f.crc); w32(p + 20, f.data.length); w32(p + 24, f.usize);
+    w16(p + 28, names[i].length); w16(p + 30, 0); w16(p + 32, 0);
+    w16(p + 34, 0); w16(p + 36, 0); w32(p + 38, 0); w32(p + 42, offs[i]);
+    out.set(names[i], p + 46);
+    p += 46 + names[i].length;
+  });
+  w32(p, 0x06054b50); w16(p + 4, 0); w16(p + 6, 0);
+  w16(p + 8, files.length); w16(p + 10, files.length);
+  w32(p + 12, p - cdStart); w32(p + 16, cdStart); w16(p + 20, 0);
+  return out;
+}
+
+// Register the pictures in the package manifest, so the file is a valid ODF package and
+// other applications keep the images when they re-save it.
+function addManifestEntries(xml, pics) {
+  const rows = pics.map(p =>
+    '<manifest:file-entry manifest:full-path="' + p.path + '" manifest:media-type="image/png"/>'
+  ).join("");
+  const end = xml.lastIndexOf("</manifest:manifest>");
+  return end < 0 ? xml : xml.slice(0, end) + rows + xml.slice(end);
+}
+
+// Rebuild the .ods SheetJS produced with the captured PNGs added under Pictures/.
+// Throws when the archive cannot be read, which the caller reports.
+function addPicturesToOds(buf, pics) {
+  const b = asBytes(buf);
+  const entries = zipEntries(b);
+  if (!entries) throw new Error("the spreadsheet library produced a file this app cannot extend");
+  const files = [];
+  for (const e of entries) {
+    const start = zipDataStart(b, e);
+    if (start < 0) throw new Error("unreadable entry in the spreadsheet: " + e.name);
+    let data = b.subarray(start, start + e.csize);
+    let method = e.method, crc = e.crc, usize = e.usize;
+    if (e.name === "META-INF/manifest.xml") {
+      if (method === 0) {
+        data = utf8Bytes(addManifestEntries(utf8Text(data), pics));
+        crc = crc32(data);
+        usize = data.length;
+      } else {
+        // Only reachable if SheetJS ever compresses it: the images still travel, they are
+        // just not declared, so another application may drop them when it re-saves.
+        console.warn("manifest.xml is compressed; the captured images were not registered in it");
+      }
+    }
+    files.push({ name: e.name, method, crc, usize, data });
+  }
+  for (const p of pics) {
+    const data = b64ToBytes(p.b64);
+    files.push({ name: p.path, method: 0, crc: crc32(data), usize: data.length, data });
+  }
+  // ODF wants "mimetype" first and uncompressed, so that the package type can be read from
+  // the first bytes of the file. SheetJS writes it third; since the archive is being rebuilt
+  // anyway, put it where the format asks for it.
+  const mi = files.findIndex(f => f.name === "mimetype");
+  if (mi > 0) files.unshift(files.splice(mi, 1)[0]);
+  return writeZip(files);
+}
+
+// Pull every Pictures/* file out of a save file, as { path: dataURL }. A picture stored
+// DEFLATEd (only possible if another application rewrote the package) is skipped rather than
+// inflated here, since loading is synchronous; the comment text still loads.
+function readOdsPictures(buf) {
+  const byPath = {};
+  const b = asBytes(buf);
+  let entries = null;
+  try { entries = zipEntries(b); } catch (err) { entries = null; }
+  if (!entries) return byPath;
+  for (const e of entries) {
+    if (e.name.indexOf(PIC_DIR) !== 0 || !e.csize) continue;
+    const start = zipDataStart(b, e);
+    if (start < 0) continue;
+    if (e.method !== 0) { console.warn("skipped a compressed image: " + e.name); continue; }
+    byPath[e.name] = PNG_PREFIX + bytesToB64(b.subarray(start, start + e.csize));
+  }
+  return byPath;
+}
+
+// How much image data the save file would carry, in base64 characters (close enough to bytes
+// × 4/3). Used by the guards below, since the app's only channel is alert/confirm.
+const IMG_SOFT_CAP = 20e6;      // ask before writing a file this big
+const IMG_HARD_CAP = 60e6;      // refuse another capture: SheetJS would hang the tab
+function totalImageChars() {
+  let n = 0;
+  for (const name of Object.keys(imagesByStudent)) {
+    const byQ = imagesByStudent[name];
+    for (const key of Object.keys(byQ)) for (const url of byQ[key]) n += url.length;
+  }
+  return n;
+}
 
 // Build the save sheets, each as { name, aoa } (an array of cell-arrays).
 // Returned in display order so the workbook tabs come out in that order.
@@ -3121,6 +4023,8 @@ function buildWorkbook() {
     { name: "Comments",       aoa: alternating((n, q) => (n && commentsByStudent[n] && commentsByStudent[n][qKey(q)]) || "") },
     // Convenience only: the running total next to the full max of every question.
     { name: "Total",          aoa: students.map(n => [n, computeTotals(n).sum, schemeMax(n)]) },
+    // Machine-only, like Total: which captured image file belongs to which question.
+    { name: "Comment_images", aoa: collectImages().rows },
   ];
 }
 
@@ -3150,9 +4054,26 @@ function saveGrades() {
   const wb = XLSX.utils.book_new();
   for (const { name, aoa } of buildWorkbook())
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), name);
-  // .ods extension → SheetJS writes ODS; compression: true DEFLATEs the zip
-  // entries (otherwise they are stored uncompressed). Triggers the download.
-  XLSX.writeFile(wb, "grades.ods", { compression: true });
+  const pics = collectImages().pics;
+  if (pics.length === 0) {
+    // Nothing captured: the plain path. The .ods extension → SheetJS writes ODS;
+    // compression: true DEFLATEs the zip entries. Triggers the download.
+    XLSX.writeFile(wb, "grades.ods", { compression: true });
+    return;
+  }
+  // With captures, write the bytes ourselves so the PNGs can be added to the same zip
+  // (addPicturesToOds needs the entries stored, which is what compression: false gives).
+  const chars = totalImageChars();
+  if (chars > IMG_SOFT_CAP && !confirm(
+        pics.length + " captured images add roughly " + Math.round(chars / 1e6) +
+        " MB to grades.ods. Save anyway?")) return;
+  try {
+    const sheetBytes = XLSX.write(wb, { type: "array", bookType: "ods", compression: false });
+    downloadFile("grades.ods", addPicturesToOds(sheetBytes, pics), ODS_MIME);
+  } catch (err) {
+    alert("Could not write the captured images into grades.ods: " +
+          (err && err.message ? err.message : err));
+  }
 }
 
 // =====================================================================
@@ -3175,6 +4096,7 @@ function buildGradesHTML() {
     const total = computeTotals(name);
     const grades = gradesByStudent[name] || {};
     const comments = commentsByStudent[name] || {};
+    const images = imagesByStudent[name] || {};
     const feedback = (feedbackByStudent[name] || "").trim();
     const groupTotals = computeGroupTotals(name);
 
@@ -3184,11 +4106,19 @@ function buildGradesHTML() {
       const v = grades[qKey(q)];
       const graded = isGraded(v);
       const comment = (comments[qKey(q)] || "").trim();
+      // Captured rectangles print under the row (.qrow wraps), so a marked-up excerpt of
+      // the student's own work can stand in for a written comment.
+      const shots = images[qKey(q)] || [];
       return (
         '<div class="qrow' + (graded ? '' : ' ungraded') + '">' +
           '<div class="qtitle">' + htmlEscape(q.title) + '</div>' +
           (comment ? '<div class="qcomment">' + htmlEscape(comment) + '</div>' : '') +
           '<div class="qpts">' + (graded ? htmlEscape(fmt(v)) : '&ndash;') + ' / ' + htmlEscape(fmt(q.max)) + '</div>' +
+          (shots.length
+            ? '<div class="qshots">' +
+                shots.map(src => '<img class="qshot" src="' + htmlEscape(src) + '" alt="">').join("") +
+              '</div>'
+            : '') +
         '</div>'
       );
     };
@@ -3273,6 +4203,7 @@ function buildGradesHTML() {
 '  .questions { margin-top: 10px; }\n' +
 '  .qrow {\n' +
 '    display: flex;\n' +
+'    flex-wrap: wrap;\n' +
 '    align-items: baseline;\n' +
 '    gap: 8px;\n' +
 '    padding: 5px 0;\n' +
@@ -3299,6 +4230,22 @@ function buildGradesHTML() {
 '    font-size: 13px;\n' +
 '    color: #6b7280;\n' +
 '    white-space: pre-wrap;\n' +
+'  }\n' +
+'  .qshots { flex: 0 0 100%; display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 2px; }\n' +
+// max-width fits the slip's ~160px column on screen while the printer still gets every
+// captured pixel; max-height keeps a tall capture from outgrowing a "break-inside: avoid"
+// slip and pushing out a blank page.
+'  .qshot {\n' +
+'    display: block;\n' +
+'    max-width: 100%;\n' +
+'    max-height: 70mm;\n' +
+'    width: auto;\n' +
+'    height: auto;\n' +
+'    border: 1px solid #e5e7eb;\n' +
+'    border-radius: 3px;\n' +
+'    background: #fff;\n' +
+'    break-inside: avoid;\n' +
+'    page-break-inside: avoid;\n' +
 '  }\n' +
 '  .qpts { flex: 0 0 auto; margin-left: auto; font-size: 14px; white-space: nowrap; font-variant-numeric: tabular-nums; }\n' +
 '  .qrow.ungraded .qpts { color: #9ca3af; }\n' +
@@ -3530,6 +4477,17 @@ questionsEl.addEventListener("click", e => {
 // Edit, remove or reorder a question/group via its row buttons (delegated so it covers
 // re-renders). Remove and the arrows are only rendered on the row being edited.
 questionsEl.addEventListener("click", e => {
+  const cap = e.target.closest(".qcapture");
+  if (cap) { toggleCaptureArm(cap.dataset.key); return; }
+  const sh = e.target.closest(".qshots");
+  if (sh) { toggleShots(sh.dataset.key); return; }
+  const del = e.target.closest(".qshot-del");
+  if (del) {
+    if (confirm("Remove this capture?")) removeShot(del.dataset.key, +del.dataset.i);
+    return;
+  }
+  const draw = e.target.closest(".qshot-edit, .qshot-img");
+  if (draw) { openAnnotator({ key: draw.dataset.key, i: +draw.dataset.i, mode: "edit" }); return; }
   const ed = e.target.closest(".qedit");
   if (ed) {
     ed.closest(".question").classList.contains("editing") ? commitEdit() : beginEdit(ed.dataset.key);
@@ -3588,6 +4546,43 @@ document.addEventListener("keydown", e => {
   }
   closeCombo();
 });
+
+// ---- The red-pen editor's controls ----
+document.getElementById("annOk").addEventListener("click", () => closeAnnotator(true));
+document.getElementById("annCancel").addEventListener("click", () => closeAnnotator(false));
+annBack.addEventListener("pointerdown", () => closeAnnotator(false));
+annUndo.addEventListener("click", undoStroke);
+document.getElementById("annClear").addEventListener("click", () => {
+  annStrokes.length = 0;
+  annCur = null;
+  redrawInk();
+});
+// The pen widths: one is always chosen, and it is remembered for the next capture.
+document.getElementById("annPens").addEventListener("click", e => {
+  const btn = e.target.closest(".annw");
+  if (!btn) return;
+  penScale = parseFloat(btn.dataset.w);
+  document.querySelectorAll("#annPens .annw").forEach(b => b.classList.toggle("on", b === btn));
+});
+// While the editor is open the keyboard belongs to it. The two handlers above are no
+// trouble: one needs an open suggestion list (closed here), the other a row being edited.
+document.addEventListener("keydown", e => {
+  if (annState) {
+    if (e.key === "Escape") { e.preventDefault(); closeAnnotator(false); }
+    else if (e.key === "Enter") { e.preventDefault(); closeAnnotator(true); }
+    else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); undoStroke(); }
+    return;
+  }
+  if (e.key === "Escape" && capState) { e.preventDefault(); cancelCapture(); }
+});
+// Pressing anywhere but the PDF (or the button itself) gives up on an armed capture.
+document.addEventListener("pointerdown", e => {
+  if (!capState || capState.dragging) return;
+  if (pdfPane.contains(e.target)) return;
+  if (e.target.closest && e.target.closest(".qcapture")) return;
+  cancelCapture();
+});
+
 // A box keeps focus after its list closes (a pick, Escape, a scroll), and focus alone
 // won't fire again — so a click on a combo box reopens its list too. "click", not
 // "mousedown": on a first click, focus (fired on mousedown) has already opened it.
@@ -3631,6 +4626,7 @@ pdfPane.addEventListener("scroll", () => {
 // the grading area), unless a combo list is open. The grading list can still be
 // scrolled by dragging its scrollbar.
 window.addEventListener("wheel", e => {
+  if (annState) return;               // the editor is open: the PDF behind it stays put
   if (!onlyScrollPdf.checked) return; // let the hovered area scroll natively
   if (e.defaultPrevented) return;     // already handled (a focused page box steps instead)
   if (comboPopup.classList.contains("open")) return; // a combo is open: scroll natively
