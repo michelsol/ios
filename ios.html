@@ -300,13 +300,15 @@
     background: rgba(37, 99, 235, 0.12);
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.6);
   }
-  /* The red-pen editor. Above #comboPopup (1000), so no suggestion list can hang over it. */
-  #annBack {
+  /* The red-pen editor and the export options: two dialogs of the same make, above
+     #comboPopup (1000) so no suggestion list can hang over either of them. They are never
+     open at the same time. */
+  #annBack, #expBack {
     position: fixed; inset: 0; z-index: 1100; display: none;
     background: rgba(15, 23, 42, 0.55);
   }
-  #annBack.open { display: block; }
-  #annBox {
+  #annBack.open, #expBack.open { display: block; }
+  #annBox, #expBox {
     position: fixed; z-index: 1101; display: none;
     top: 50%; left: 50%; transform: translate(-50%, -50%);
     max-width: 94vw; max-height: 92vh;
@@ -317,7 +319,7 @@
     border-radius: 10px;
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
   }
-  #annBox.open { display: flex; }
+  #annBox.open, #expBox.open { display: flex; }
   #annStage { position: relative; align-self: center; line-height: 0; background: #fff; }
   #annBase { display: block; max-width: 88vw; max-height: 74vh; }
   /* The ink layer covers the base exactly, at the same bitmap size but the displayed one,
@@ -326,21 +328,35 @@
     position: absolute; left: 0; top: 0; width: 100%; height: 100%;
     cursor: crosshair; touch-action: none;
   }
-  #annBar { display: flex; align-items: center; gap: 8px; }
-  #annGap { flex: 1 1 auto; }
+  #annBar, #expBar { display: flex; align-items: center; gap: 8px; }
+  #annBar button svg, .expact svg { display: block; width: 17px; height: 17px; }
+  #annGap, #expGap { flex: 1 1 auto; }
   #annPens { display: flex; align-items: center; gap: 4px; margin-right: 4px; }
-  .annw {
+  .annw, .expcol, .expcompact {
     width: 30px; height: 30px; padding: 0;
     display: inline-flex; align-items: center; justify-content: center;
     border: 1px solid var(--border); border-radius: 6px;
-    background: #fff; cursor: pointer;
+    /* The colour is spelled out: the global button rule would leave it white on white. */
+    background: #fff; color: var(--muted); cursor: pointer;
   }
-  .annw:hover { border-color: #c7d7f5; background: #f0f5ff; }
-  .annw.on { border-color: var(--accent); background: #e4edff; box-shadow: inset 0 2px 3px rgba(0,0,0,0.18); }
+  .annw:hover, .expcol:hover, .expcompact:hover {
+    border-color: #c7d7f5; background: #f0f5ff; color: var(--accent);
+  }
+  .annw.on, .expcol.on, .expcompact.on {
+    border-color: var(--accent); background: #e4edff; color: var(--accent);
+    box-shadow: inset 0 2px 3px rgba(0,0,0,0.18);
+  }
   .annw i { display: block; border-radius: 50%; background: #e11d48; }
   .annw[data-w="0.55"] i { width: 4px; height: 4px; }
   .annw[data-w="1"] i { width: 7px; height: 7px; }
   .annw[data-w="1.9"] i { width: 11px; height: 11px; }
+  /* The export options. Each column button is a picture of the page it produces, so the
+     choice needs no words; the funnel is the compact filter. */
+  #expBox { min-width: 320px; }
+  #expCols { display: flex; align-items: center; gap: 4px; }
+  .expcol { width: 38px; }
+  .expcompact { margin-left: 10px; }
+  .expcol svg, .expcompact svg { display: block; width: 26px; height: 22px; }
   .combo-item {
     position: relative;                  /* carries .combo-fill */
     display: flex;
@@ -922,11 +938,80 @@
       <button type="button" class="annw on" data-w="1" title="Medium pen"><i></i></button>
       <button type="button" class="annw" data-w="1.9" title="Thick pen"><i></i></button>
     </span>
-    <button type="button" class="secondary" id="annUndo">Undo</button>
-    <button type="button" class="secondary" id="annClear">Clear</button>
+    <button type="button" class="secondary" id="annUndo" title="Undo the last stroke" aria-label="Undo the last stroke">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polyline points="3 5 3 11 9 11"/><path d="M5.5 16A8.5 8.5 0 1 0 8 6.1L3 11"/>
+      </svg>
+    </button>
+    <button type="button" class="secondary" id="annClear" title="Erase all strokes" aria-label="Erase all strokes">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M3 21h18"/><path d="M13.5 4.5l6 6-6.5 6.5h-5l-3.5-3.5z"/><path d="M8 10l6 6"/>
+      </svg>
+    </button>
     <span id="annGap"></span>
-    <button type="button" class="secondary" id="annCancel">Cancel</button>
-    <button type="button" id="annOk">Attach</button>
+    <button type="button" class="secondary" id="annCancel" title="Discard this capture" aria-label="Discard this capture">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+      </svg>
+    </button>
+    <button type="button" id="annOk" title="Attach this capture to the question" aria-label="Attach this capture to the question">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polyline points="20 6 9 17 4 12"/>
+      </svg>
+    </button>
+  </div>
+</div>
+
+<!-- Asked before the printable slips are written: how many columns, and whether to print
+     every question or only the ones that have something to say. -->
+<div id="expBack"></div>
+<div id="expBox" role="dialog" aria-label="Export options">
+  <div id="expBar">
+    <span id="expCols" role="group" aria-label="Columns per page">
+      <button type="button" class="expcol" data-n="1" title="One column of slips per page" aria-label="One column of slips per page">
+        <svg viewBox="0 0 28 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+          <rect x="2" y="3.5" width="24" height="17" rx="2"/>
+          <g fill="currentColor" stroke="none" opacity="0.5"><rect x="5" y="6.5" width="18" height="11"/></g>
+        </svg>
+      </button>
+      <button type="button" class="expcol" data-n="2" title="Two columns of slips per page" aria-label="Two columns of slips per page">
+        <svg viewBox="0 0 28 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+          <rect x="2" y="3.5" width="24" height="17" rx="2"/>
+          <g fill="currentColor" stroke="none" opacity="0.5"><rect x="5" y="6.5" width="8" height="11"/><rect x="15" y="6.5" width="8" height="11"/></g>
+        </svg>
+      </button>
+      <button type="button" class="expcol on" data-n="3" title="Three columns of slips per page" aria-label="Three columns of slips per page">
+        <svg viewBox="0 0 28 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+          <rect x="2" y="3.5" width="24" height="17" rx="2"/>
+          <g fill="currentColor" stroke="none" opacity="0.5"><rect x="5" y="6.5" width="5" height="11"/><rect x="11.5" y="6.5" width="5" height="11"/><rect x="18" y="6.5" width="5" height="11"/></g>
+        </svg>
+      </button>
+    </span>
+    <button type="button" class="expcompact" id="expCompact" aria-pressed="false"
+            title="Compact: print only the questions that lost points, carry a comment, or carry a capture" aria-label="Compact">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+      </svg>
+    </button>
+    <span id="expGap"></span>
+    <button type="button" class="secondary expact" id="expCancel" title="Cancel" aria-label="Cancel">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+      </svg>
+    </button>
+    <button type="button" class="expact" id="expOk" title="Export the printable grade slips"
+            aria-label="Export">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polyline points="20 6 9 17 4 12"/>
+      </svg>
+    </button>
   </div>
 </div>
 
@@ -2405,13 +2490,14 @@ function closeCombo() {
   activeComboInput = null;
 }
 
-// A combo's clear (×) button: empty the box and store that (`store`), leaving nothing
-// active — no cursor in the box and its suggestion list closed.
+// A combo's clear (×) button: empty the box, store that (`store`) and leave the suggestion
+// list unfolded, ready for the suggestion that replaces what was just cleared. The box keeps
+// focus — the button's mousedown handler already prevented the default.
 function clearComboInput(input, store) {
   input.value = "";
   store();
-  input.blur();
-  closeCombo();
+  commitBankEdit(input, false);   // a row left open would lose its text to the redraw
+  openCombo(input);
 }
 
 // The toolbar's "×" is decided from the box's text, so a redraw keeps it honest as the box is
@@ -4090,7 +4176,13 @@ function htmlEscape(s) {
 // Build a standalone, print-ready HTML document: one bordered slip per student,
 // language-agnostic (no labels), ready to print and cut apart. Reuses
 // computeTotals() and fmt() so totals match the on-screen UI exactly.
-function buildGradesHTML() {
+// `opts` carries the two choices made in the export dialog: `columns` (1, 2 or 3 columns of
+// slips on the printed page) and `compact` (print only the questions that have something to
+// say). The defaults are what the export has always produced, so a call without options is
+// unchanged.
+function buildGradesHTML(opts) {
+  const columns = (opts && opts.columns) || 3;
+  const compact = !!(opts && opts.compact);
   const slips = students.map(name => {
     const scheme = schemeFor(name);
     const total = computeTotals(name);
@@ -4099,6 +4191,20 @@ function buildGradesHTML() {
     const images = imagesByStudent[name] || {};
     const feedback = (feedbackByStudent[name] || "").trim();
     const groupTotals = computeGroupTotals(name);
+
+    // Compact mode prints a question only when it has something to say: points were lost, a
+    // comment was written, or a rectangle was captured (a marked-up capture stands in for a
+    // comment, by design). A question that was never graded says nothing and is dropped.
+    // Group headers, subtotals and the slip total are printed either way, and no number
+    // changes — this is a print filter, not a different calculation.
+    const keepQ = (q) => {
+      if (!compact) return true;
+      const k = qKey(q);
+      if ((comments[k] || "").trim()) return true;
+      if ((images[k] || []).length) return true;
+      const v = grades[k];
+      return isGraded(v) && Number(v) < Number(q.max) - 1e-9;
+    };
 
     const qrow = (q) => {
       // A question that was never graded prints an en dash instead of a score, and counts
@@ -4140,7 +4246,7 @@ function buildGradesHTML() {
                   sub +
                 '</div>';
       }
-      return html + grp.questions.map(qrow).join("");
+      return html + grp.questions.filter(keepQ).map(qrow).join("");
     }).join("");
 
     return (
@@ -4170,7 +4276,7 @@ function buildGradesHTML() {
 '    color: #1f2937;\n' +
 '    background: #f4f5f7;\n' +
 '  }\n' +
-'  .sheet { column-count: 3; column-gap: 12px; }\n' +
+'  .sheet { column-count: ' + columns + '; column-gap: 12px; }\n' +
 '  .slip {\n' +
 '    border: 1px solid #d7dbe0;\n' +
 '    border-radius: 8px;\n' +
@@ -4259,13 +4365,53 @@ function buildGradesHTML() {
   );
 }
 
+// ---- The export options dialog ----
+// Two choices, both remembered for the next export (like penScale): the number of columns
+// and whether to leave out the questions that have nothing to say. The buttons carry
+// pictures rather than words, so the dialog reads the same in any language.
+const expBack = document.getElementById("expBack");
+const expBox = document.getElementById("expBox");
+const expCompactBtn = document.getElementById("expCompact");
+let expColumns = 3;
+let expCompact = false;
+let expOpen = false;
+
+// The pressed-in buttons *are* the choice, so they are always painted from it.
+function paintExportOptions() {
+  for (const b of expBox.querySelectorAll(".expcol"))
+    b.classList.toggle("on", Number(b.dataset.n) === expColumns);
+  expCompactBtn.classList.toggle("on", expCompact);
+  expCompactBtn.setAttribute("aria-pressed", expCompact ? "true" : "false");
+}
+
+function openExportOptions() {
+  closeCombo();                 // nothing should hang over the dialog
+  paintExportOptions();
+  expOpen = true;
+  expBack.classList.add("open");
+  expBox.classList.add("open");
+}
+
+function closeExportOptions() {
+  expOpen = false;
+  expBack.classList.remove("open");
+  expBox.classList.remove("open");
+}
+
+// The dialog's tick: write the file the chosen options describe.
+function confirmExport() {
+  closeExportOptions();
+  saveCurrentStudent();
+  downloadFile("grades.html", buildGradesHTML({ columns: expColumns, compact: expCompact }),
+               "text/html;charset=utf-8;");
+}
+
 function exportGrades() {
   if (students.length === 0) {
     alert("No students to export yet.");
     return;
   }
-  saveCurrentStudent();
-  downloadFile("grades.html", buildGradesHTML(), "text/html;charset=utf-8;");
+  openExportOptions();          // confirmExport writes the file, once the options are set
 }
 
 // =====================================================================
@@ -4482,10 +4628,7 @@ questionsEl.addEventListener("click", e => {
   const sh = e.target.closest(".qshots");
   if (sh) { toggleShots(sh.dataset.key); return; }
   const del = e.target.closest(".qshot-del");
-  if (del) {
-    if (confirm("Remove this capture?")) removeShot(del.dataset.key, +del.dataset.i);
-    return;
-  }
+  if (del) { removeShot(del.dataset.key, +del.dataset.i); return; }
   const draw = e.target.closest(".qshot-edit, .qshot-img");
   if (draw) { openAnnotator({ key: draw.dataset.key, i: +draw.dataset.i, mode: "edit" }); return; }
   const ed = e.target.closest(".qedit");
@@ -4547,6 +4690,16 @@ document.addEventListener("keydown", e => {
   closeCombo();
 });
 
+// ---- The export options dialog's controls ----
+document.getElementById("expOk").addEventListener("click", confirmExport);
+document.getElementById("expCancel").addEventListener("click", closeExportOptions);
+expBack.addEventListener("pointerdown", closeExportOptions);
+expBox.addEventListener("click", e => {
+  const col = e.target.closest(".expcol");
+  if (col) { expColumns = Number(col.dataset.n); paintExportOptions(); return; }
+  if (e.target.closest(".expcompact")) { expCompact = !expCompact; paintExportOptions(); }
+});
+
 // ---- The red-pen editor's controls ----
 document.getElementById("annOk").addEventListener("click", () => closeAnnotator(true));
 document.getElementById("annCancel").addEventListener("click", () => closeAnnotator(false));
@@ -4567,6 +4720,11 @@ document.getElementById("annPens").addEventListener("click", e => {
 // While the editor is open the keyboard belongs to it. The two handlers above are no
 // trouble: one needs an open suggestion list (closed here), the other a row being edited.
 document.addEventListener("keydown", e => {
+  if (expOpen) {
+    if (e.key === "Escape") { e.preventDefault(); closeExportOptions(); }
+    else if (e.key === "Enter") { e.preventDefault(); confirmExport(); }
+    return;
+  }
   if (annState) {
     if (e.key === "Escape") { e.preventDefault(); closeAnnotator(false); }
     else if (e.key === "Enter") { e.preventDefault(); closeAnnotator(true); }
@@ -4626,7 +4784,7 @@ pdfPane.addEventListener("scroll", () => {
 // the grading area), unless a combo list is open. The grading list can still be
 // scrolled by dragging its scrollbar.
 window.addEventListener("wheel", e => {
-  if (annState) return;               // the editor is open: the PDF behind it stays put
+  if (annState || expOpen) return;    // a dialog is open: the PDF behind it stays put
   if (!onlyScrollPdf.checked) return; // let the hovered area scroll natively
   if (e.defaultPrevented) return;     // already handled (a focused page box steps instead)
   if (comboPopup.classList.contains("open")) return; // a combo is open: scroll natively
