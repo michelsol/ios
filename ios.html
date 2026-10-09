@@ -374,6 +374,10 @@
   .combo-item.graded   { border-left-color: var(--graded);   background: var(--graded-bg); }
   .combo-item.ungraded { border-left-color: var(--ungraded); background: var(--ungraded-bg); }
   .combo-item:hover, .combo-item.active { background: #eaf1ff; }
+  /* The row the keyboard is on. It shares the hover background, so it also carries a bar
+     the hovered row has not got — otherwise the mouse could hide where the keyboard is.
+     A shadow and not a border-left: that one is reserved (see the status rules above). */
+  .combo-item.active { box-shadow: inset 2px 0 0 var(--accent); }
   .combo-note { margin-left: 8px; color: var(--muted); font-weight: 400; } /* e.g. a student's group */
   .combo-score {                       /* e.g. a student's running total */
     margin-left: 8px; color: var(--muted); font-weight: 400;
@@ -495,6 +499,18 @@
   }
   .opt:hover { border-color: var(--accent); background: linear-gradient(#fff, #eef4ff); }
   .opt:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  /* The keyboard cursor: one cell of one row (see the keyboard grid). An outline, so it
+     adds nothing to the layout and the row's own green/amber wash shows through it.
+     Dashed while the cell is only cursored, solid once it has the keys for typing. It is
+     painted on the .combo around a box and never on the box: .combo clips (overflow), and
+     the box has no border of its own to ring. */
+  .kbcur { outline: 2px dashed var(--accent); outline-offset: 1px;
+           border-radius: 8px; scroll-margin: 8px; }
+  .kbcur:focus-within { outline-style: solid; }
+  /* A phrase just saved to its suggestion list. The box is left in the same press and the
+     list stays folded, so this flash is the only thing that says it was taken. Two classes
+     deep, to beat .combo's own background. */
+  .combo.kbsaved { background: var(--graded-bg); }
   .opt.pressing {                        /* only while held: a key holds no state of its own */
     border-color: var(--accent);
     background: #e4edff;
@@ -1129,6 +1145,7 @@ const globalFeedback = document.getElementById("globalFeedback");
 let activeComboInput = null;   // the comment input the popup is currently attached to
 let comboEditIndex = -1;       // which row of a suggestion list is open for editing (-1 = none)
 let comboDraft = null;         // text of a new suggestion not in the list yet, or null
+let comboIndex = -1;           // which row the keyboard is on (-1 = none); see comboNavRows
 
 // =====================================================================
 // Spreadsheet helpers
@@ -1419,6 +1436,8 @@ function bankRow(input, text, index) {
     label.textContent = text;
     row.appendChild(label);
     // Only an idle row picks: while editing, the clicks belong to its box.
+    row._comboValue = text;
+    row._bankIndex = index;              // ...and which entry, for Delete (kbDeleteSuggestion)
     row.addEventListener("mousedown", e => { e.preventDefault(); selectComboItem(text); });
   }
 
@@ -1973,7 +1992,10 @@ function buildScoreBox(q, key) {
   box.autocomplete = "off";
   const texts = q.scores.map(fmt);
   box._comboItems = () => [CLEAR_SCORE].concat(texts.slice(q.split));
-  box._comboSelect = (v) => { box.value = v === CLEAR_SCORE ? "" : v; onScoreBoxChange(box); };
+  // A score picked from the list is final: it is stored and the box hands the keyboard back to
+  // the grid at once, as Enter on a typed score does. A comment keeps the box after a pick,
+  // since more is often typed after a suggestion; a score never has anything to add.
+  box._comboSelect = (v) => { box.value = v === CLEAR_SCORE ? "" : v; kbLeaveCell(true, box); };
   box.addEventListener("change", () => onScoreBoxChange(box));
   box.addEventListener("focus", () => openCombo(box));
   // Just wide enough for the widest score it may have to show — which is any of them, since
@@ -2405,6 +2427,14 @@ function renderQuestions() {
   // (with an empty scheme, just the first three) — so selecting a student works before
   // any question exists.
   loadStudent(currentStudent);
+  // The grading list is the keyboard's home: as soon as there is anything to grade at all,
+  // the cursor starts on the first question, so Enter, Space and the digits work without an
+  // arrow key first. Once only — Escape drops the cursor, and it must then stay dropped.
+  if (!kbCursor && !kbEntered && kbRows().length > 1) {
+    kbCursor = { key: kbRowKey(kbRows()[0]), at: 0, role: "score", i: 0 };
+    kbEntered = true;
+  }
+  paintKbCursor(false);   // the rows are new elements; the keyboard cursor is not one
 }
 
 // Save a typed/selected comment for the current student and add it to the bank.
@@ -2484,6 +2514,8 @@ function openCombo(input) {
       item.appendChild(span);
       if (tag.title) item.title += " · " + tag.title;
     }
+    // What this row commits, for the keyboard: a click has it in hand already.
+    item._comboValue = s;
     item.addEventListener("mousedown", e => { e.preventDefault(); selectComboItem(s); });
     comboPopup.appendChild(item);
   }
@@ -2496,6 +2528,10 @@ function openCombo(input) {
   // suggestion was just opened for editing).
   const current = comboPopup.querySelector(".combo-item.current, .combo-item.editing");
   if (current) current.scrollIntoView({ block: "nearest" });
+  // The keyboard starts on the row that matters — the student already selected, say. Every
+  // redraw comes back through here, so a list narrowed by typing never keeps a stale row.
+  comboIndex = comboNavRows().indexOf(comboPopup.querySelector(".combo-item.current"));
+  paintComboCursor();
 }
 
 function positionCombo() {
@@ -2540,6 +2576,7 @@ function closeCombo() {
   if (input && input._bank) commitBankEdit(input, false);
   comboEditIndex = -1;
   comboDraft = null;
+  comboIndex = -1;
   comboPopup.classList.remove("open");
   activeComboInput = null;
 }
@@ -2609,6 +2646,336 @@ function renderGrades() {
     if (block.classList.contains("editing")) return; // shows its definition, not its grade
     block.classList.toggle("ungraded", !isGraded(grades[block.dataset.key]));
   });
+}
+
+// =====================================================================
+// The grading list as a keyboard grid
+// =====================================================================
+
+// Where the keyboard is in the list: one cell of one row. This is data and never DOM focus,
+// because renderQuestions() rebuilds every row from scratch — a remembered element would be
+// stale after each student switch — and because focus in a box means "the keys are yours now",
+// which is the opposite of what the arrows do there. Enter is what hands them over.
+//   key:  the question's key, or null for the total bar (whose one cell is the feedback box)
+//   role: "score" | "opt" | "comment"      i: which score key, for role "opt"
+//   at:   the row's last known index, the fallback for when `key` is gone (see kbResolve)
+let kbCursor = null;             // null = not in the grid yet: nothing is outlined
+let kbEntered = false;           // the grid is entered by itself once, and not again
+
+// One Ctrl+arrow scrolls the PDF about as far as one wheel notch, so holding it (on the
+// keyboard's own autorepeat) reads as scrolling and not as jumping.
+const KB_PDF_SCROLL = 100;
+
+// Vim's four, so the right hand never leaves the middle of the keyboard: they stand in for
+// the arrows exactly, and under Shift they are the second layer, as Shift+arrows are.
+const HOME_KEY = { h: "ArrowLeft", j: "ArrowDown", k: "ArrowUp", l: "ArrowRight" };
+
+// The rows the cursor can be on, top to bottom: the grading rows, then the total bar. A row
+// open for editing is not one of them — it shows the question's definition and owns Enter and
+// Escape itself — and neither are the group separators or the "+" bar.
+function kbRows() {
+  return Array.from(questionsEl.children).filter(el => el === totalBar
+    || (el.classList.contains("question") && !el.classList.contains("editing")));
+}
+
+function kbRowKey(row) { return row === totalBar ? null : row.dataset.key; }
+
+// A row's cells, in the order the row builds them: the score box, every score key, then the
+// comment. The total bar has the one cell, so there is nothing for its left/right to do.
+function kbCells(row) {
+  if (row === totalBar) return [{ role: "comment", i: 0, el: globalFeedback }];
+  const cells = [];
+  const box = row.querySelector(".qscorebox");
+  if (box) cells.push({ role: "score", i: 0, el: box });
+  row.querySelectorAll(".opt").forEach((opt, i) => cells.push({ role: "opt", i: i, el: opt }));
+  const comment = row.querySelector(".qcomment");
+  if (comment) cells.push({ role: "comment", i: 0, el: comment });
+  return cells;
+}
+
+// The cursor against the list as it is now. Everything that can happen to a row between two
+// keystrokes is absorbed here, which is why nothing else has to know about any of it: a
+// question that moved is still found by its key; one that was removed, or that this student's
+// scheme has not got, or that just opened for editing, falls back to the row that took its
+// place; a role with no cell in this row falls back to the nearest one it has. Returns null
+// only when there is no row at all.
+function kbResolve() {
+  if (!kbCursor) return null;
+  const rows = kbRows();
+  if (rows.length === 0) return null;
+  let ri = rows.findIndex(row => kbRowKey(row) === kbCursor.key);
+  if (ri < 0) ri = Math.min(Math.max(kbCursor.at, 0), rows.length - 1);
+  const row = rows[ri];
+  const cells = kbCells(row);
+  if (cells.length === 0) return null;
+  let ci = cells.findIndex(c => c.role === kbCursor.role
+                                && (c.role !== "opt" || c.i === kbCursor.i));
+  // Same role, further left: this row has fewer score keys than the one we came from.
+  if (ci < 0 && kbCursor.role === "opt") {
+    const last = cells.filter(c => c.role === "opt").pop();
+    if (last) ci = cells.indexOf(last);
+  }
+  if (ci < 0) ci = cells.findIndex(c => c.role === kbCursor.role);
+  if (ci < 0) ci = 0;                      // a row with no key at all (scores all uncommon)
+  return { rows: rows, ri: ri, row: row, cells: cells, ci: ci, cell: cells[ci] };
+}
+
+// A score key is outlined itself; a box is outlined through the .combo that frames it.
+function kbPaintTarget(cell) {
+  return cell.role === "opt" ? cell.el : (cell.el.closest(".combo") || cell.el);
+}
+
+// Paint the cursor, and write back where it actually landed, so the next keystroke starts
+// from what is on screen. `scroll` only on a real move: this also runs on every rebuild, and
+// a rebuild must not scroll the list out from under the teacher's eyes.
+function paintKbCursor(scroll) {
+  for (const el of questionsEl.querySelectorAll(".kbcur")) el.classList.remove("kbcur");
+  const r = kbResolve();
+  if (!r) return;
+  // Only where the cursor *is* is written back, never which cell it is after: a row with
+  // fewer score keys than the one above it must not shorten the column being walked down.
+  kbCursor.key = kbRowKey(r.row);
+  kbCursor.at = r.ri;
+  const target = kbPaintTarget(r.cell);
+  target.classList.add("kbcur");
+  // A cell already in view is left alone by scrollIntoView, which matters: any scroll of
+  // #questions folds an open suggestion list. (jsdom has no implementation of it at all.)
+  if (scroll && target.scrollIntoView)
+    target.scrollIntoView({ block: "nearest", inline: "nearest" });
+}
+
+// True while the cursored cell holds the keyboard for typing. Derived and never stored: a
+// click elsewhere, Tab, or beginEdit() can take the focus away at any moment, and a stored
+// flag would then be a lie.
+function kbTyping() {
+  const r = kbResolve();
+  return !!r && r.cell.el === document.activeElement;
+}
+
+// Move. The first arrow key with no cursor yet only enters the grid, on the first row's score
+// box. Neither axis wraps: holding Down settles on the feedback box instead of cycling, and
+// crossing to another student is Ctrl+Left/Right.
+function kbMove(dRow, dCell) {
+  const rows = kbRows();
+  if (rows.length === 0) return;
+  if (!kbCursor) {
+    kbCursor = { key: kbRowKey(rows[0]), at: 0, role: "score", i: 0 };
+    paintKbCursor(true);
+    return;
+  }
+  const r = kbResolve();
+  if (!r) return;
+  if (dRow) {
+    const row = r.rows[Math.min(Math.max(r.ri + dRow, 0), r.rows.length - 1)];
+    // The cell asked for, not the one this row could offer (see paintKbCursor).
+    kbCursor = { key: kbRowKey(row), at: r.rows.indexOf(row),
+                 role: kbCursor.role, i: kbCursor.i };
+  } else {
+    const cell = r.cells[Math.min(Math.max(r.ci + dCell, 0), r.cells.length - 1)];
+    kbCursor = { key: kbRowKey(r.row), at: r.ri, role: cell.role, i: cell.i };
+  }
+  paintKbCursor(true);
+}
+
+// Put the cursor on the cell that was just clicked, so the keyboard carries on from where the
+// mouse left off. Anything else clicked leaves the cursor where it is — and so does every
+// click at all until the keyboard has been used once: a teacher working with the mouse alone
+// should never be shown an outline they did not ask for.
+function kbCursorTo(el) {
+  if (!kbCursor) return;
+  const row = el.closest(".question") || (totalBar.contains(el) ? totalBar : null);
+  if (!row || row.classList.contains("editing")) return;
+  const cell = kbCells(row).find(c => c.el === el);
+  if (!cell) return;
+  kbCursor = { key: kbRowKey(row), at: kbRows().indexOf(row), role: cell.role, i: cell.i };
+  paintKbCursor(false);
+}
+
+// The score keys hold no state of their own (see .opt), so a key pressed from the keyboard
+// has to say so for a moment — the same mark the mouse leaves while it holds one down.
+function kbFlash(opt) {
+  opt.classList.add("pressing");
+  setTimeout(() => opt.classList.remove("pressing"), 120);
+}
+
+// The same word, said about a phrase: green for a moment, in the green that means "done"
+// everywhere else in the list.
+function kbFlashSaved(el) {
+  const combo = el.closest(".combo") || el;
+  combo.classList.add("kbsaved");
+  setTimeout(() => combo.classList.remove("kbsaved"), 500);
+}
+
+// Ctrl+Enter keeps the phrase: it joins the suggestion list of the box it was typed in —
+// the one thing in a comment the keyboard could not reach, the list's "+" being a mousedown
+// (see bankFooter). Only the two bank-backed boxes carry a _bank, so nothing else can set
+// it off, and bankAdd already ignores an empty or an already-listed phrase: pressing it
+// twice over is a no-op, not a complaint.
+function kbSaveSuggestion() {
+  const el = document.activeElement;
+  if (!el || !el._bank || !el.value.trim()) return null;
+  bankAdd(el._bank.bank, el._bank.set, el.value);
+  return el;
+}
+
+// Enter (or Space) on the cursored cell: a score key grades, a box takes the keyboard. The
+// score box unfolds its list as it gains focus (its own focus listener); a comment box does
+// not — its list belongs to its arrow, and now to Down.
+function kbActivate() {
+  const r = kbResolve();
+  if (!r) return false;
+  if (r.cell.role === "opt") { pressOption(r.cell.el); kbFlash(r.cell.el); return true; }
+  r.cell.el.focus();
+  paintKbCursor(false);
+  return true;
+}
+
+// Hand the keys back to the grid. Enter stores what the box holds, through the very call its
+// own "change" makes — said rather than left to the blur below, which fires that change only
+// in a real browser and only for a value the user themselves touched. Escape puts the stored
+// value back instead, which is the whole difference between the two. The feedback box needs
+// neither: it stores on every keystroke, so by the time Escape arrives there is nothing left
+// to abandon. `box` says which box to leave when there is no cursor to resolve one from —
+// Ctrl+Enter can be pressed in a box the mouse opened, and that one is still left properly.
+function kbLeaveCell(commit, box) {
+  const r = kbResolve();
+  const el = box || (r && r.cell.el);
+  if (!el) return;
+  closeCombo();
+  if (el.classList.contains("qscorebox")) {
+    if (commit) onScoreBoxChange(el);
+    else renderGrades();
+  } else if (el !== globalFeedback) {
+    if (commit) onCommentChange(el);
+    else el.value = ((commentsByStudent[currentStudent] || {})[el.dataset.key]) || "";
+  }
+  el.blur();
+  paintKbCursor(false);
+}
+
+// A digit grades the cursored question with the first key whose label contains it: with the
+// keys "0 0.5 1", 0 is 0, 5 is 0.5 and 1 is 1. It matches the label rather than the value
+// because the label is what the teacher reads (0.5 has no 5 in it), and the first match wins
+// so that "0" means the key 0 and not 0.5.
+function kbDigit(ch) {
+  const r = kbResolve();
+  if (!r) return false;
+  const opt = Array.from(r.row.querySelectorAll(".opt"))
+                   .find(o => o.textContent.indexOf(ch) >= 0);
+  if (!opt) return false;        // nothing to grade with: the key keeps whatever else it meant
+  pressOption(opt);
+  kbFlash(opt);
+  return true;
+}
+
+// Space opens the comment of the row the cursor is on: the box takes the keyboard, ready to
+// be typed into, without having to walk along the row to it first. On the last row that box
+// is the appréciation. Space is the only way in — a letter used to type its way in as well,
+// which is only a trap once Space does the job.
+function kbOpenComment() {
+  const r = kbResolve();
+  if (!r) return false;
+  const cell = r.cells.find(c => c.role === "comment");
+  if (!cell) return false;
+  kbCursor = { key: kbRowKey(r.row), at: r.ri, role: "comment", i: 0 };
+  const el = cell.el;
+  el.focus();                  // _comboArrowOnly: unlike the score box, this unfolds no list
+  // An empty box takes nothing: a comment should not open with a space. After text already
+  // written, it is an ordinary space, ready for the next word.
+  if (el.value) {
+    el.value += " ";
+    if (el.setSelectionRange) el.setSelectionRange(el.value.length, el.value.length);
+    // Said rather than typed: the appréciation box stores on every "input" and a suggestion
+    // list redraws on one, and neither should be able to tell the difference.
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  paintKbCursor(true);
+  return true;
+}
+
+// Clearing a grade is otherwise only reachable through the "—" in the score box's list.
+function kbClearGrade() {
+  const r = kbResolve();
+  if (!r || r.row === totalBar) return false;
+  setGrade(kbRowKey(r.row), null);
+  return true;
+}
+
+// ---- The suggestion list, from the keyboard ----
+
+// The rows the keyboard may land on. The toolbar and the footer are not ".combo-item" at all,
+// the per-row pencil and delete buttons are inside a row rather than one, and a row open for
+// editing owns its own keys — so this one selector leaves out all four.
+function comboNavRows() {
+  return Array.from(comboPopup.querySelectorAll(".combo-item:not(.editing)"));
+}
+
+function paintComboCursor() {
+  const rows = comboNavRows();
+  rows.forEach((row, i) => row.classList.toggle("active", i === comboIndex));
+  const row = rows[comboIndex];
+  if (row && row.scrollIntoView) row.scrollIntoView({ block: "nearest" });
+}
+
+function moveComboCursor(d) {
+  // While a suggestion is being edited, its box has the keyboard — arrows and all.
+  if (comboEditIndex >= 0 || comboDraft !== null) return false;
+  const rows = comboNavRows();
+  if (rows.length === 0) return false;
+  comboIndex = comboIndex < 0 ? (d > 0 ? 0 : rows.length - 1)
+                              : Math.min(Math.max(comboIndex + d, 0), rows.length - 1);
+  paintComboCursor();
+  return true;
+}
+
+// Enter picks the highlighted row, through the same call a click makes.
+function pickComboCursor() {
+  const row = comboNavRows()[comboIndex];
+  if (row && row._comboValue != null) selectComboItem(row._comboValue);
+  else closeCombo();
+}
+
+// Backspace or Delete drops the highlighted suggestion from the list, through the same call as
+// the row's own "−". The highlight stays put, on the entry that moves up into its place, so the
+// next press takes that one. Only a highlighted row is meant: a typed character redraws the
+// list without one (see redrawComboOnInput), so a Backspace typed into the box still edits it.
+function kbDeleteSuggestion() {
+  const input = activeComboInput;
+  if (!input || !input._bank || comboEditIndex >= 0 || comboDraft !== null) return false;
+  const row = comboNavRows()[comboIndex];
+  if (!row || row._bankIndex == null) return false;
+  const at = comboIndex;
+  deleteBankRow(input, row._bankIndex);
+  comboIndex = Math.min(at, comboNavRows().length - 1);
+  paintComboCursor();
+  return true;
+}
+
+// A field whose keys must never be taken: anything that is typed into. Buttons and checkboxes
+// do nothing with an arrow, so the grid may have those. (Nothing in this file is a <textarea>
+// or contenteditable; this is where one would have to be allowed for.)
+function isTextEntry(el) {
+  if (!el || el.tagName !== "INPUT") return false;
+  const type = (el.type || "text").toLowerCase();
+  return type !== "checkbox" && type !== "radio" && type !== "button" && type !== "file";
+}
+
+// A file dialog hands the keyboard back as it closes, to the button it was opened from — and
+// then Enter presses that button again, opening the same dialog instead of grading. (It is
+// the *first* dialog's button that keeps it: pressing another button never takes the focus
+// away — see the mousedown handler further down — so the stale one is never displaced.) The
+// moment a file comes back is the moment the grading list should have the keyboard.
+function releaseToGrid() {
+  const el = document.activeElement;
+  if (el && el !== document.body && !isTextEntry(el)) el.blur();
+}
+
+// The grid may only take Enter and Space where nothing else would act on them: a focused
+// button would otherwise be pressed twice over, once by the browser and once by us — so
+// tabbing to a score key and pressing Space still presses that key, as it always has.
+function kbOwnsKey() {
+  const el = document.activeElement;
+  return !el || el === document.body || el === questionsEl;
 }
 
 // Tint the student box with the current student's status, so it is visible without opening
@@ -4528,8 +4895,18 @@ document.getElementById("btnImportGrades").addEventListener("click", () => docum
 document.getElementById("btnSave").addEventListener("click", saveGrades);
 document.getElementById("btnExport").addEventListener("click", exportGrades);
 
-document.getElementById("fileAssignment").addEventListener("change", e => openPdfFiles(e.target));
-document.getElementById("fileGrades").addEventListener("change", e => readFile(e.target, true, loadGradesWorkbook));
+// Both ends of a load hand the keyboard back to the grid (see releaseToGrid): a page cannot
+// pin down whether the browser restores the focus before or after it fires this event, so
+// the release is said at both rather than guessed at. Saying it twice costs nothing, and a
+// box being typed into — a comment started while a long PDF renders — is never interrupted.
+document.getElementById("fileAssignment").addEventListener("change", e => {
+  releaseToGrid();
+  openPdfFiles(e.target).then(releaseToGrid);
+});
+document.getElementById("fileGrades").addEventListener("change", e => {
+  releaseToGrid();
+  readFile(e.target, true, buf => { loadGradesWorkbook(buf); releaseToGrid(); });
+});
 
 // Student picker is an editable combobox: the popup lists existing students; choosing one
 // switches to it. Typing a new name + "+" adds it (see addStudent).
@@ -4570,6 +4947,7 @@ studentGroupArrow.addEventListener("mousedown", e => {
 // creates one on the page in view instead), or switches to them if they exist.
 studentSelect.addEventListener("keydown", e => {
   if (e.key !== "Enter" || !studentSelect.value.trim()) return;
+  if (comboIndex >= 0) return;   // a highlighted name in the open list is what Enter picks
   e.preventDefault();
   closeCombo();
   addStudent();
@@ -4580,6 +4958,7 @@ studentSelect.addEventListener("keydown", e => {
 function invertStepping(input, step) {
   input.addEventListener("keydown", e => {
     if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+    if (e.ctrlKey || e.metaKey) return;   // Ctrl+up/down scrolls the PDF, here as anywhere
     e.preventDefault();
     step(e.key === "ArrowUp" ? -1 : 1);
   });
@@ -4809,9 +5188,12 @@ document.addEventListener("keydown", e => {
   const input = activeComboInput;
   if (input && input._bank && (comboEditIndex >= 0 || comboDraft !== null)) {
     cancelBankEdit(input);
+    e.preventDefault();
     return;
   }
   closeCombo();
+  // Say the key has been used, so the grid does not drop its own cursor on the same press.
+  e.preventDefault();
 });
 
 // ---- The export options dialog's controls ----
@@ -4946,6 +5328,202 @@ const endDrag = e => {
 };
 divider.addEventListener("pointerup", endDrag);
 divider.addEventListener("pointercancel", endDrag);
+
+// No button in this app takes the keyboard from a mouse press. Otherwise the last one
+// clicked keeps it, and the next Enter or Space presses it again — the file dialog opening
+// a second time instead of the grid grading. Ten buttons already say this for themselves
+// (see onButtonPress, and every combo arrow); this says it once, for all of them. Preventing
+// the default on mousedown does not cancel the click they act on, and no button in the file
+// has an :active rule to lose. Tab does not reach them either (see the keydown handler).
+document.addEventListener("mousedown", e => {
+  if (e.target.closest && e.target.closest("button")) e.preventDefault();
+});
+
+// ---- One handler for every keystroke the grid owns ----
+
+document.addEventListener("keydown", e => {
+  // Anything already dealt with: the editing row's Enter/Escape, a suggestion row's Enter, the
+  // page box's arrows, an armed capture's Escape, a folded suggestion list. Those handlers run
+  // first — they sit on the elements themselves, or were registered earlier — and this is how
+  // they say so.
+  if (e.defaultPrevented) return;
+  // A keystroke an input method is still composing into a character belongs to it alone: it
+  // arrives before any character exists, so acting on it would grade or type the wrong thing.
+  if (e.isComposing || e.keyCode === 229) return;
+  if (expOpen || annState) {              // a dialog owns the keyboard (see its own handler)
+    // ...but it must not leak this one: the browser would drop a "save this page" window
+    // over the dialog.
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") e.preventDefault();
+    return;
+  }
+  const typing = isTextEntry(document.activeElement);
+
+  // Ctrl holds the two saves and nothing that moves: everything that walks the list, the PDF
+  // or the pile is on Shift, which is under the hand already (see the block below).
+  if (e.ctrlKey || e.metaKey) {
+    if (e.key === "Enter") {
+      // One press for the two halves of the same thought: the phrase is worth keeping, and
+      // this comment is written. In any other box it is not ours, and falls through.
+      const box = kbSaveSuggestion();
+      if (box) { kbFlashSaved(box); kbLeaveCell(true, box); e.preventDefault(); }
+    } else if (e.key.toLowerCase() === "s") {
+      // Ctrl+S saves the work, as everywhere else, and from anywhere — a comment box
+      // included: saveGrades() harvests every box before it writes, so what is half-typed
+      // goes in with the rest.
+      saveGrades();
+      e.preventDefault();                 // ...and the browser does not offer the page
+    }
+    return;                               // every other chord stays the browser's own
+  }
+
+  // An open list takes the keys that walk it, and lets the rest through: typing still reaches
+  // the box behind it, and Escape still reaches the handler that folds it.
+  if (comboPopup.classList.contains("open")) {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      if (moveComboCursor(e.key === "ArrowDown" ? 1 : -1)) e.preventDefault();
+      return;
+    }
+    // Tab walks the list too: the arrows are a reach, and j/k cannot serve here — the box
+    // behind the list has the keyboard, where they would simply be letters. It is left alone
+    // while a suggestion row is being edited, which is what moveComboCursor refuses.
+    if (e.key === "Tab") {
+      if (comboEditIndex < 0 && comboDraft === null) {
+        moveComboCursor(e.shiftKey ? -1 : 1);
+        e.preventDefault();               // an empty list too: Tab never leaves the box
+      }
+      return;
+    }
+    if ((e.key === "Backspace" || e.key === "Delete") && kbDeleteSuggestion()) {
+      e.preventDefault();
+      return;
+    }
+    // Anything else typed belongs to the box the list hangs off, Enter included while one of
+    // the rows is being edited (its own box has the keyboard then).
+    if (e.key !== "Enter" || comboEditIndex >= 0 || comboDraft !== null) return;
+    if (comboIndex >= 0) { pickComboCursor(); e.preventDefault(); return; }
+    // Enter with no row highlighted: fold the list, then let the same press go on to mean
+    // "done with this cell" below — the score box unfolds its list as it gains focus, and
+    // would otherwise need three Enters to take one typed grade.
+    closeCombo();
+  }
+
+  // Tab never leaves the grid: the browser would walk the buttons and score keys, drawing its
+  // own focus ring beside the grid's outline. In a box with a list it unfolds the list and
+  // lands on the first row (Shift+Tab: the last), as the down arrow does; once the list is
+  // open, the block above walks it. Any other box — a question being edited, the page box —
+  // keeps its own Tab.
+  if (e.key === "Tab" && !e.altKey) {
+    const el = document.activeElement;
+    if (typing && el._comboItems) {
+      openCombo(el);
+      // The student picker opens on the current student, which keeps the highlight.
+      if (comboIndex < 0) moveComboCursor(e.shiftKey ? -1 : 1);
+      e.preventDefault();
+      return;
+    }
+    if (kbOwnsKey() || (el && el.tagName === "BUTTON")) { e.preventDefault(); return; }
+  }
+
+  // Shift is the second layer — the PDF and the pile — on the arrows and on the home row
+  // alike. Not Ctrl+hjkl: those four are the browser's own (history, downloads, search bar,
+  // address bar), which a page cannot reliably take back, whereas no browser lays a finger
+  // on a Shift letter. It sits after the list's own keys and before the focused box gets its
+  // say, which is what lets the PDF scroll from inside a comment.
+  if (e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    // In a box only the real arrows can mean anything here: a capital is a capital.
+    const k = (typing || e.key.length !== 1) ? e.key : (HOME_KEY[e.key.toLowerCase()] || e.key);
+    if (k === "ArrowUp" || k === "ArrowDown") {
+      // These reach the PDF even mid-comment: in a one-line box they only select to the
+      // start or the end of the line, which Shift+Home and Shift+End already do, and reading
+      // further down the copy mid-sentence is worth more than that.
+      pdfPane.scrollTop += k === "ArrowDown" ? KB_PDF_SCROLL : -KB_PDF_SCROLL;
+      e.preventDefault();
+      return;
+    }
+    // Left and right keep their ordinary meaning in a box: selecting a few characters there
+    // matters more than stepping the pile.
+    if (!typing && (k === "ArrowLeft" || k === "ArrowRight")) {
+      moveStudent(k === "ArrowRight" ? 1 : -1);
+      e.preventDefault();
+      return;
+    }
+    if (!typing && e.key === " ") { moveStudent(1); e.preventDefault(); return; }
+    // Anything else Shift does belongs to the browser: a capital, a selection, a space.
+  }
+
+  // The cursored box holds the keyboard: it keeps every key but the two that give it back and
+  // the one that unfolds its list.
+  if (kbTyping()) {
+    if (e.key === "Enter") { kbLeaveCell(true); e.preventDefault(); }
+    else if (e.key === "Escape") { kbLeaveCell(false); e.preventDefault(); }
+    else if (e.key === "ArrowDown") {
+      // Unfold *and* land on the first suggestion in the one press: a list is only ever
+      // unfolded in order to pick from it. The guard is for a list that opens on a row of
+      // its own (the student picker opens on the current student) — that row keeps it.
+      openCombo(document.activeElement);
+      if (comboIndex < 0) moveComboCursor(1);
+      e.preventDefault();
+    }
+    return;
+  }
+  if (typing) return;                     // any other box: the toolbars keep all their keys
+
+  // Out here the home row stands in for the arrows, and arrives at their own four cases
+  // below — same movement, same clamping, same "the first press enters the grid". Inside a
+  // box they are letters, which the guard above has already seen to. The case is read from
+  // shiftKey and never from the letter, so Caps Lock changes nothing.
+  const home = e.key.length === 1 ? HOME_KEY[e.key.toLowerCase()] : null;
+
+  switch (home || e.key) {
+    case "ArrowUp":    kbMove(-1, 0); e.preventDefault(); return;
+    case "ArrowDown":  kbMove(1, 0);  e.preventDefault(); return;
+    case "ArrowLeft":  kbMove(0, -1); e.preventDefault(); return;
+    case "ArrowRight": kbMove(0, 1);  e.preventDefault(); return;
+    case "Enter":
+      if (kbOwnsKey() && kbActivate()) e.preventDefault();
+      return;
+    case " ":
+      // Space opens the row's comment: it is the key the hand is already on, and a comment
+      // is wanted on nearly every row. Stepping to the next copy is Shift+Space. kbOwnsKey
+      // still holds — a focused button keeps its own Space.
+      if (kbOwnsKey() && kbOpenComment()) e.preventDefault();
+      return;
+    case "PageUp":
+    case "PageDown":
+      // A whole page of the PDF, as in any document viewer. Not Ctrl+Page, which every
+      // browser keeps for switching tabs — Chrome does not even deliver that keystroke to
+      // the page, and Firefox switches tabs whatever the page says about it. With no PDF
+      // open there is nothing to step, so the key is left to the browser.
+      if (pageCanvases.length) {
+        stepPdfPage(e.key === "PageDown" ? 1 : -1);
+        e.preventDefault();
+      }
+      return;
+    case "Backspace":
+    case "Delete":
+      if (kbClearGrade()) e.preventDefault();
+      return;
+    case "Escape":
+      if (kbCursor) { kbCursor = null; paintKbCursor(false); e.preventDefault(); }
+      return;
+    default:
+      // A digit grades, from anywhere in the row — the cursor need not be on a score key. It
+      // reads the character the layout produced and never the key that produced it: on an
+      // AZERTY keyboard "é" and "2" are one key, and Shift is the whole of the difference.
+      // Nothing else here is ours: a letter is left alone, Space being the way into a comment.
+      if (e.key >= "0" && e.key <= "9" && e.key.length === 1 && kbDigit(e.key))
+        e.preventDefault();
+  }
+});
+
+// Clicking a cell moves the cursor onto it, so the outline never points at a cell the teacher
+// has left. A press that lands on no cell — a gap, a row's buttons, a thumbnail, the scrollbar
+// — leaves the cursor alone, and so does the middle button (it steps to the next student).
+questionsEl.addEventListener("pointerdown", e => {
+  if (e.button !== 0 || !e.target.closest) return;
+  const el = e.target.closest(".opt, .qscorebox, .qcomment");
+  if (el) kbCursorTo(el);
+});
 
 updateNavButtons();
 refreshPositionButton();

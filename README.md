@@ -40,8 +40,26 @@ puis au ciseaux. (~ 3 minutes)
     Remarque : Pour les contrôles courts, pas forcément nécessaire d'agrafer.
 14. Trier les étudiants par ordre alphabétique (dans la toolbar de la liste des étudiants), sauvegarder, ouvrir le ODS à la feuille "Total", puis copier coller dans Pronote ou autre logiciel. (Plus rapide à faire qu'à la main)
 
+## Raccourcis clavier
+
+La zone de notation peut se parcourir entièrement au clavier.
+
+| Touche | Effet |
+| --- | --- |
+| ↑ / ↓ · k / j | question précédente / suivante |
+| ← / → · h / l | case précédente / suivante |
+| 0-9 | met la première note du barème qui contient ce chiffre : avec 0 0.5 1, la touche 5 met 0.5, la touche 1 met 1. |
+| Retour arrière / Suppr | efface la note de la question |
+| Espace | ouvre le commentaire de la question courante |
+| Maj + ↑ / ↓ · Maj + k / j | fait défiler le PDF |
+| Page préc. / suiv. | page précédente / suivante du PDF |
+| Maj + ← / L | étudiant précédent |
+| Maj + → / H / Maj + Espace / Clic molette | étudiant suivant |
+| Ctrl + S | enregistre les notes au format ODS |
+| Ctrl + Entrée | dans un commentaire : garde la phrase dans la liste de suggestions |
+| ↑ / ↓ · Tab / Maj + Tab | dans une liste : déroule les suggestions |
+
 ## Astuces
 
 * Pour recharger un travail précédent, importer la dernière sauvegarde (dossier en haut à droite), et rouvrir le PDF associé (dossier en haut à gauche).
 * L'interface est un fichier html qui tourne en local et peut être téléchargé sur clé USB.
-* Le bouton de la molette permet de sauter à l'étudiant suivant.
