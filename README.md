@@ -4,14 +4,14 @@
 
 [Essayer tout de suite](https://michelsol.github.io/ios/examples/example.html) : l'interface s'ouvre avec un lot de copies et une sauvegarde d'exemple déjà chargés, prête à corriger. Rien à installer ni à télécharger.
 
-### Avantages
+### Avantages supposés
 
 * Confort mental : Possible de corriger transversalement avec très peu d'informations en tête.
 * Confort physique : Mouvements de faible amplitude, position relâchée.
 * Gain de temps ou de qualité de correction possible pour les grands contrôles
 * Informatisation de toutes les copies => triche ultérieure impossible, post-traitement informatisé des copies possible.
 
-### Désavantages
+### Désavantages supposés
 
 * Temps de préparation et de finalisation non négligeables => peu rentable pour petits contrôles.
 * Commentaires non précisément localisés (Cependant, il existe un bouton pour annoter au stylo rouge, des captures rectangulaires)
