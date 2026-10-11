@@ -28,7 +28,7 @@ Les estimations de temps sont données pour un contrôle de maths durant une heu
 3. Créer la liste des questions et les points possibles associés à chaque question (grand + bleu à droite)
 
    * Pour chaque question, on doit spécifier le titre, les points possibles, et éventuellement un titre d'exercice
-   * Les points possibles ont par ex. le format 0 1 | 0.25 0.5 0.75. Les points fréquents avant | sont affichés horizontalement, les points peu fréquents après | sont suggérés en liste déroulante verticale.
+   * Les points possibles ont par ex. le format 0 1 \| 0.25 0.5 0.75. Les points fréquents avant \| sont affichés horizontalement, les points peu fréquents après \| sont suggérés en liste déroulante verticale.
    * Pour les gros contrôles, spécifier les exercices permet d'expliciter des sous-totaux.
    * Pour les petits contrôles, il est préférable de ne pas spécifier de titre d'exercice, pour gagner de la place sur le format exporté.
 4. Créer la liste des étudiants à droite.
@@ -58,7 +58,7 @@ Les sauvegardes sont des fichiers ODS manuellement lisibles, et modifiables avec
 
 9. Trier les étudiants par page (dans la toolbar de la liste des étudiants), pour les remettre dans le même ordre que le lot initialement scanné.
 10. Appuyer sur l'icone d'impression en haut à droite pour exporter dans un format imprimable.
-11. Imprimer.
+11. Imprimer. Attention à retirer les entêtes éventuelles, préférer des marges étroites.
 12. Découper les résultats
 * Il faut être très vigilant à cette étape, on peut facilement mélanger les papiers et perdre l'ordre des copies.
 * Vérifier que vous avez bien fait l'étape 9, sinon il faut refaire 9,10,11
