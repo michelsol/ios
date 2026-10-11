@@ -1,5 +1,9 @@
 [IOS](https://michelsol.github.io/ios/ios.html) est une interface pour corriger les copies par ordinateur.
 
+L'interface est [open-source](https://github.com/michelsol/ios) et fonctionne strictement sans serveur, sur votre ordinateur.
+
+Vous pouvez télécharger la page de l'interface et couper internet lors de l'utilisation si vous le souhaitez.
+
 ## Exemple clé en main
 
 [Essayer tout de suite](https://michelsol.github.io/ios/examples/example.html) : l'interface s'ouvre avec un lot de copies et une sauvegarde d'exemple déjà chargés, prête à corriger. Rien à installer ni à télécharger.
@@ -94,5 +98,3 @@ La zone de notation peut se parcourir entièrement au clavier.
 
 * Pour recharger un travail précédent, importer la dernière sauvegarde (dossier en haut à droite), et rouvrir le PDF associé (dossier en haut à gauche).
 * Pour une appréciation commune à une tranche de notes (par ex. « Excellent travail ! » à partir de 16/20), cliquer sur les bulles au bout de la barre d'appréciation.
-* L'interface est un fichier html qui tourne en local et peut être téléchargé sur clé USB.
-
