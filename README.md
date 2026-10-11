@@ -62,4 +62,5 @@ La zone de notation peut se parcourir entièrement au clavier.
 ## Astuces
 
 * Pour recharger un travail précédent, importer la dernière sauvegarde (dossier en haut à droite), et rouvrir le PDF associé (dossier en haut à gauche).
+* Pour une appréciation commune à une tranche de notes (par ex. « Excellent travail ! » à partir de 16/20), cliquer sur les deux bulles au bout de la barre d'appréciation : la phrase s'ajoute à l'appréciation de chaque étudiant entièrement noté dont le total tombe dans l'intervalle.
 * L'interface est un fichier html qui tourne en local et peut être téléchargé sur clé USB.

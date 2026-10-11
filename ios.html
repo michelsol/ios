@@ -300,15 +300,15 @@
     background: rgba(37, 99, 235, 0.12);
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.6);
   }
-  /* The red-pen editor and the export options: two dialogs of the same make, above
-     #comboPopup (1000) so no suggestion list can hang over either of them. They are never
-     open at the same time. */
-  #annBack, #expBack {
+  /* The red-pen editor, the export options and the range feedback: three dialogs of the same
+     make, above #comboPopup (1000) so no suggestion list can hang over any of them. They are
+     never open at the same time. */
+  #annBack, #expBack, #rngBack {
     position: fixed; inset: 0; z-index: 1100; display: none;
     background: rgba(15, 23, 42, 0.55);
   }
-  #annBack.open, #expBack.open { display: block; }
-  #annBox, #expBox {
+  #annBack.open, #expBack.open, #rngBack.open { display: block; }
+  #annBox, #expBox, #rngBox {
     position: fixed; z-index: 1101; display: none;
     top: 50%; left: 50%; transform: translate(-50%, -50%);
     max-width: 94vw; max-height: 92vh;
@@ -319,7 +319,7 @@
     border-radius: 10px;
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
   }
-  #annBox.open, #expBox.open { display: flex; }
+  #annBox.open, #expBox.open, #rngBox.open { display: flex; }
   #annStage { position: relative; align-self: center; line-height: 0; background: #fff; }
   #annBase { display: block; max-width: 88vw; max-height: 74vh; }
   /* The ink layer covers the base exactly, at the same bitmap size but the displayed one,
@@ -328,9 +328,9 @@
     position: absolute; left: 0; top: 0; width: 100%; height: 100%;
     cursor: crosshair; touch-action: none;
   }
-  #annBar, #expBar { display: flex; align-items: center; gap: 8px; }
+  #annBar, #expBar, #rngBar { display: flex; align-items: center; gap: 8px; }
   #annBar button svg, .expact svg { display: block; width: 17px; height: 17px; }
-  #annGap, #expGap { flex: 1 1 auto; }
+  #annGap, #expGap, #rngBar .gap { flex: 1 1 auto; }
   #annPens { display: flex; align-items: center; gap: 4px; margin-right: 4px; }
   .annw, .expcol, .expcompact {
     width: 30px; height: 30px; padding: 0;
@@ -357,6 +357,27 @@
   .expcol { width: 38px; }
   .expcompact { margin-left: 10px; }
   .expcol svg, .expcompact svg { display: block; width: 26px; height: 22px; }
+  /* The range feedback: two fractions either side of the student's total, the number of
+     students they take in, then the phrase. Pictures and numbers only, like the export. */
+  #rngBox { min-width: 380px; }
+  #rngRange { display: flex; align-items: center; gap: 10px; }
+  .rngfrac { display: inline-flex; flex-direction: column; align-items: stretch; gap: 4px; }
+  .rngfrac i { display: block; height: 2px; border-radius: 1px; background: var(--text); }
+  .rngfrac input, #rngText {
+    font: inherit; font-size: 15px; padding: 4px 6px;
+    border: 1px solid var(--border); border-radius: 6px; background: #fff; color: var(--text);
+  }
+  .rngfrac input { width: 58px; text-align: center; font-variant-numeric: tabular-nums; }
+  .rngfrac input.bad { border-color: #dc2626; background: #fef2f2; }
+  .rngle { font-size: 20px; color: var(--muted); }
+  .rngicon { display: block; flex: 0 0 auto; width: 20px; height: 20px; color: var(--muted); }
+  #rngStar { width: 26px; height: 26px; color: var(--accent); }
+  #rngCount {
+    display: inline-flex; align-items: center; gap: 5px; margin-left: auto;
+    font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text);
+  }
+  #rngTextRow { display: flex; align-items: center; gap: 8px; }
+  #rngText { flex: 1 1 auto; min-width: 0; }
   .combo-item {
     position: relative;                  /* carries .combo-fill */
     display: flex;
@@ -703,6 +724,10 @@
   .totalLabel { flex: 0 0 auto; white-space: nowrap; }
   #feedbackCombo { flex: 1 1 auto; }
   #globalFeedback { font-weight: 400; font-size: 14px; }
+  /* Opens the range feedback (see openRangeFeedback): an icon, quiet until hovered. */
+  #rngOpenBtn { flex: 0 0 auto; padding: 6px 8px; line-height: 0; color: var(--muted); }
+  #rngOpenBtn:hover { color: var(--accent); }
+  #rngOpenBtn svg { display: block; width: 18px; height: 18px; }
   .zoomctl {
     display: inline-flex;
     align-items: center;
@@ -941,6 +966,15 @@
                   title="Feedback suggestions">&#9662;</button>
           <input type="text" id="globalFeedback" class="qcomment" autocomplete="off" placeholder="">
         </div>
+        <button type="button" class="secondary" id="rngOpenBtn" tabindex="-1"
+                title="Add a feedback to every student whose total is in a range"
+                aria-label="Feedback for a range of totals">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z"/>
+            <path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1"/>
+          </svg>
+        </button>
       </div>
       <div id="addQuestionBar">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -1046,6 +1080,65 @@
     </button>
     <button type="button" class="expact" id="expOk" title="Export the printable grade slips"
             aria-label="Export">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polyline points="20 6 9 17 4 12"/>
+      </svg>
+    </button>
+  </div>
+</div>
+
+<!-- One feedback for every student whose total lies between two fractions (see
+     openRangeFeedback). -->
+<div id="rngBack"></div>
+<div id="rngBox" role="dialog" aria-label="Feedback for a range of totals">
+  <div id="rngRange">
+    <span class="rngfrac" title="Lowest total of the range (included); empty: no lowest">
+      <input type="text" id="rngLoNum" inputmode="decimal" autocomplete="off" aria-label="Lowest total">
+      <i></i>
+      <input type="text" id="rngLoDen" inputmode="decimal" autocomplete="off" aria-label="Lowest total, out of">
+    </span>
+    <span class="rngle" aria-hidden="true">&le;</span>
+    <svg class="rngicon" id="rngStar" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <title>The student's total</title>
+      <circle cx="12" cy="8" r="6"/><path d="M15.48 12.89 17 22l-5-3-5 3 1.52-9.11"/>
+    </svg>
+    <span class="rngle" aria-hidden="true">&le;</span>
+    <span class="rngfrac" title="Highest total of the range (included); empty: no highest">
+      <input type="text" id="rngHiNum" inputmode="decimal" autocomplete="off" aria-label="Highest total">
+      <i></i>
+      <input type="text" id="rngHiDen" inputmode="decimal" autocomplete="off" aria-label="Highest total, out of">
+    </span>
+    <span id="rngCount" title="Fully graded students in this range">
+      <svg class="rngicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="9" cy="7" r="4"/>
+        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+      </svg>
+      <span id="rngCountN">0</span>
+    </span>
+  </div>
+  <div id="rngTextRow">
+    <svg class="rngicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+    </svg>
+    <input type="text" id="rngText" autocomplete="off" aria-label="Feedback to add"
+           title="Feedback added at the end of each of these students' feedback">
+  </div>
+  <div id="rngBar">
+    <span class="gap"></span>
+    <button type="button" class="secondary expact" id="rngCancel" title="Cancel" aria-label="Cancel">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+      </svg>
+    </button>
+    <button type="button" class="expact" id="rngOk"
+            title="Add the feedback to these students" aria-label="Add the feedback">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <polyline points="20 6 9 17 4 12"/>
@@ -1531,10 +1624,13 @@ function bankFooter(input) {
 }
 
 // A picked suggestion is appended to what's already in the box ("; " between), not
-// substituted for it.
+// substituted for it. joinPhrase is the same rule on a stored string (see the range feedback).
+function joinPhrase(cur, val) {
+  cur = (cur || "").trim();
+  return cur ? cur + "; " + val : val;
+}
 function appendSuggestion(input, val) {
-  const cur = input.value.trim();
-  input.value = cur ? cur + "; " + val : val;
+  input.value = joinPhrase(input.value, val);
 }
 
 // Format a number for display/output without float noise (e.g. 0.7500001 -> "0.75").
@@ -4837,6 +4933,122 @@ function exportGrades() {
   openExportOptions();          // confirmExport writes the file, once the options are set
 }
 
+// ---- The range feedback dialog ----
+// One phrase for every student whose total lies in a range — "Excellent work!" from 16/20 up —
+// added at the end of their feedback in one go. Each end is a fraction, read as a share of
+// each student's own full mark, so students on different schemes are measured alike. Only a
+// fully graded copy counts: a running total stays low until the last question is in, and would
+// otherwise collect the low end's phrase.
+const rngBack = document.getElementById("rngBack");
+const rngBox = document.getElementById("rngBox");
+const rngLoNum = document.getElementById("rngLoNum");
+const rngLoDen = document.getElementById("rngLoDen");
+const rngHiNum = document.getElementById("rngHiNum");
+const rngHiDen = document.getElementById("rngHiDen");
+const rngText = document.getElementById("rngText");
+const rngOk = document.getElementById("rngOk");
+const rngCountN = document.getElementById("rngCountN");
+const RNG_EPS = 1e-9;          // 16/20 is 0.8 and so is a total of 16 out of 20, float or not
+let rngOpen = false;
+
+// A box's number: null when empty, NaN when it is no number at all. Stricter than toNum,
+// which reads "16x" as 16 — the count beside it must not agree with a typo.
+function rngNum(input) {
+  const s = input.value.trim();
+  if (s === "") return null;
+  return Number(s.indexOf(".") === -1 ? s.replace(",", ".") : s);
+}
+
+// The range as two shares of the full mark, { lo, hi }, or null when a box will not do; every
+// box at fault is marked. An empty top leaves that end open, which is what "16/20 and up"
+// needs (bonus points included), and likewise an empty bottom.
+function readRange() {
+  const loNum = rngNum(rngLoNum), loDen = rngNum(rngLoDen);
+  const hiNum = rngNum(rngHiNum), hiDen = rngNum(rngHiDen);
+  const numOk = n => n === null || isFinite(n);
+  const denOk = d => d !== null && isFinite(d) && d > 0;
+  const bad = new Set();
+  if (!numOk(loNum)) bad.add(rngLoNum);
+  if (!denOk(loDen)) bad.add(rngLoDen);
+  if (!numOk(hiNum)) bad.add(rngHiNum);
+  if (!denOk(hiDen)) bad.add(rngHiDen);
+  let range = null;
+  if (bad.size === 0) {
+    range = { lo: loNum === null ? -Infinity : loNum / loDen,
+              hi: hiNum === null ? Infinity : hiNum / hiDen };
+    if (range.lo > range.hi + RNG_EPS) { bad.add(rngLoNum); bad.add(rngHiNum); range = null; }
+  }
+  for (const el of [rngLoNum, rngLoDen, rngHiNum, rngHiDen]) el.classList.toggle("bad", bad.has(el));
+  return range;
+}
+
+// The students a range takes in, both ends included. Pure — the count and the tick share it.
+function rangeStudents(range) {
+  return students.filter(name => {
+    if (studentStatus(name) !== "graded") return false;
+    const max = schemeMax(name);
+    if (!(max > 0)) return false;
+    const share = computeTotals(name).sum / max;
+    return share >= range.lo - RNG_EPS && share <= range.hi + RNG_EPS;
+  });
+}
+
+// Repaint the count and the tick from the boxes, on every keystroke: the teacher sees what the
+// tick will do before pressing it.
+function paintRange() {
+  const range = readRange();
+  rngCountN.textContent = range ? String(rangeStudents(range).length) : "–";
+  rngOk.disabled = !range || !rngText.value.trim();
+  // An empty top reads as the full mark, whatever it is out of.
+  rngHiNum.placeholder = rngHiDen.value.trim();
+  return range;
+}
+
+function openRangeFeedback() {
+  if (students.length === 0) {
+    alert("No students yet.");
+    return;
+  }
+  closeCombo();                 // nothing should hang over the dialog
+  saveCurrentStudent();         // a half-typed score counts toward the total it is judged by
+  const max = fmt(schemeMax(currentStudent));
+  rngLoNum.value = ""; rngHiNum.value = "";
+  rngLoDen.value = max; rngHiDen.value = max;
+  rngLoNum.placeholder = "0";
+  rngText.value = "";
+  rngOpen = true;
+  rngBack.classList.add("open");
+  rngBox.classList.add("open");
+  paintRange();
+  rngLoNum.focus();             // the boxes in reading order: from, out of, to, out of, phrase
+}
+
+function closeRangeFeedback() {
+  rngOpen = false;
+  rngBack.classList.remove("open");
+  rngBox.classList.remove("open");
+  if (rngBox.contains(document.activeElement)) document.activeElement.blur();
+}
+
+// The dialog's tick. A student whose feedback already says the phrase is passed over, so a
+// second press adds nothing.
+function confirmRangeFeedback() {
+  const range = paintRange();
+  const text = rngText.value.trim();
+  if (!range || !text) return;
+  saveCurrentStudent();
+  const before = feedbackByStudent[currentStudent];
+  for (const name of rangeStudents(range)) {
+    const cur = feedbackByStudent[name] || "";
+    if (cur.indexOf(text) < 0) feedbackByStudent[name] = joinPhrase(cur, text);
+  }
+  closeRangeFeedback();
+  if (currentStudent && feedbackByStudent[currentStudent] !== before) {
+    globalFeedback.value = feedbackByStudent[currentStudent];
+    kbFlashSaved(globalFeedback);
+  }
+}
+
 // =====================================================================
 // Wiring
 // =====================================================================
@@ -5196,6 +5408,13 @@ expBox.addEventListener("click", e => {
   if (e.target.closest(".expcompact")) { expCompact = !expCompact; paintExportOptions(); }
 });
 
+// ---- The range feedback dialog's controls ----
+document.getElementById("rngOpenBtn").addEventListener("click", openRangeFeedback);
+rngOk.addEventListener("click", confirmRangeFeedback);
+document.getElementById("rngCancel").addEventListener("click", closeRangeFeedback);
+rngBack.addEventListener("pointerdown", closeRangeFeedback);
+rngBox.addEventListener("input", paintRange);
+
 // ---- The red-pen editor's controls ----
 document.getElementById("annOk").addEventListener("click", () => closeAnnotator(true));
 document.getElementById("annCancel").addEventListener("click", () => closeAnnotator(false));
@@ -5219,6 +5438,11 @@ document.addEventListener("keydown", e => {
   if (expOpen) {
     if (e.key === "Escape") { e.preventDefault(); closeExportOptions(); }
     else if (e.key === "Enter") { e.preventDefault(); confirmExport(); }
+    return;
+  }
+  if (rngOpen) {
+    if (e.key === "Escape") { e.preventDefault(); closeRangeFeedback(); }
+    else if (e.key === "Enter") { e.preventDefault(); confirmRangeFeedback(); }
     return;
   }
   if (annState) {
@@ -5280,7 +5504,7 @@ pdfPane.addEventListener("scroll", () => {
 // the grading area), unless a combo list is open. The grading list can still be
 // scrolled by dragging its scrollbar.
 window.addEventListener("wheel", e => {
-  if (annState || expOpen) return;    // a dialog is open: the PDF behind it stays put
+  if (annState || expOpen || rngOpen) return;  // a dialog is open: the PDF behind it stays put
   if (!onlyScrollPdf.checked) return; // let the hovered area scroll natively
   if (e.defaultPrevented) return;     // already handled (a focused page box steps instead)
   if (comboPopup.classList.contains("open")) return; // a combo is open: scroll natively
@@ -5343,7 +5567,7 @@ document.addEventListener("keydown", e => {
   // A keystroke an input method is still composing into a character belongs to it alone: it
   // arrives before any character exists, so acting on it would grade or type the wrong thing.
   if (e.isComposing || e.keyCode === 229) return;
-  if (expOpen || annState) {              // a dialog owns the keyboard (see its own handler)
+  if (expOpen || annState || rngOpen) {   // a dialog owns the keyboard (see its own handler)
     // ...but it must not leak this one: the browser would drop a "save this page" window
     // over the dialog.
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") e.preventDefault();
