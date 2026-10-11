@@ -1,66 +1,98 @@
-# Ios
-
-[Ios](https://michelsol.github.io/ios/ios.html) est une interface pour corriger les copies par ordinateur.
+[IOS](https://michelsol.github.io/ios/ios.html) est une interface pour corriger les copies par ordinateur.
 
 ## Exemple clé en main
 
 [Essayer tout de suite](https://michelsol.github.io/ios/examples/example.html) : l'interface s'ouvre avec un lot de copies et une sauvegarde d'exemple déjà chargés, prête à corriger. Rien à installer ni à télécharger.
 
+### Avantages
+
+* Confort mental : Possible de corriger transversalement avec très peu d'informations en tête.
+* Confort physique : Mouvements de faible amplitude, position relâchée.
+* Gain de temps ou de qualité de correction possible pour les grands contrôles
+* Informatisation de toutes les copies => triche ultérieure impossible, post-traitement informatisé des copies possible.
+
+### Désavantages
+
+* Temps de préparation et de finalisation non négligeables => peu rentable pour petits contrôles.
+* Commentaires non précisément localisés (Cependant, il existe un bouton pour annoter au stylo rouge, des captures rectangulaires)
+* Usage de papier, d'encre, d'agrafes, pour imprimer les notes et commentaires (possibilité de condenser le format d'export)
+
 ## Comment l'utiliser ?
 
-Les estimations de temps (à confirmer) sont pour un contrôle de maths durant une heure avec 35 élèves, en ayant l'habitude.
+Les estimations de temps sont données pour un contrôle de maths durant une heure avec 35 élèves, en ayant l'habitude.
 
-### Préparation (~ 10 min)
+### Préparation (\~ 10 min)
 
 1. Scanner un lot de copies comme un seul fichier PDF consolidé.
 2. [Ouvrir l'interface](https://michelsol.github.io/ios/ios.html), puis cliquer sur le dossier en haut à gauche pour charger le PDF scanné.
-3. Créer la liste des questions et les points possibles associés à chaque question
-4. Créer la liste des étudiants à droite. Vous pouvez copier une liste depuis un tableur et la coller directement.
+3. Créer la liste des questions et les points possibles associés à chaque question (grand + bleu à droite)
+
+   * Pour chaque question, on doit spécifier le titre, les points possibles, et éventuellement un titre d'exercice
+   * Les points possibles ont par ex. le format 0 1 | 0.25 0.5 0.75. Les points fréquents avant | sont affichés horizontalement, les points peu fréquents après | sont suggérés en liste déroulante verticale.
+   * Pour les gros contrôles, spécifier les exercices permet d'expliciter des sous-totaux.
+   * Pour les petits contrôles, il est préférable de ne pas spécifier de titre d'exercice, pour gagner de la place sur le format exporté.
+4. Créer la liste des étudiants à droite.
+
+   * Vous pouvez copier une liste de noms d'élèves depuis un tableur (téléchargée par ex. depuis pronote), et la coller directement (CTRL+v).
 5. Faire un premier passage sur le lot. A chaque passage sur une nouvelle copie :
-    * Sélectionner l'étudiant correspondant
-    * Appuyer sur la feuille, pour associer la page du PDF, à cet étudiant.
-    * Vous pouvez aussi enregistrer un groupe associé à cet étudiant (par ex. sujet A ou B)
-    * En cas de mauvais ordre ou orientation, il est possible de modifier le PDF en haut à gauche.
+
+   * Sélectionner l'étudiant correspondant
+   * Appuyer sur la feuille avec un point rouge, pour associer la page du PDF, à cet étudiant.
+   * Vous pouvez aussi enregistrer un groupe associé à cet étudiant (par ex. sujet A ou B)
+   * En cas de mauvais ordre ou orientation, il est possible de modifier le PDF en haut à gauche.
 6. Il est possible de trier la liste des étudiants aléatoirement, puis par groupe (pour mettre les sujets A avant les sujets B), dans la toolbar de la liste des étudiants.
-7. Enregistrer en cliquant sur le bouton de sauvegarde sur la partie droite. 
+7. Enregistrer (Ctrl + S) en cliquant sur le bouton de sauvegarde sur la partie droite.
 Les sauvegardes sont des fichiers ODS manuellement lisibles, et modifiables avec un tableur.
 
 ### Notation
 
-8. Noter les copies en faisant des sauvegardes régulières.
+8. Noter les copies en faisant des sauvegardes régulières (Ctrl + S). Il est préférable de désactiver l'ouverture automatique des fichiers téléchargés.
 
-### Finalisation (~ 10 min)
+   * La correction peut se faire de façon transversale en traitant toutes les copies successivement, pour chaque question ou petit groupe de questions dépendantes.
+   * En cas de correction transversale, penser à enclencher la feuille avec un point rouge, pour garder en mémoire la position précise du défilement dans le PDF pour chaque étudiant.
+   * Si vous corrigez à la souris, vous pouvez sauter à l'étudiant suivant avec le clic molette, ce qui permet de corriger des questions simples en bougeant très peu la main.
+   * Les commentaires peuvent être personnalisés et sauvegardés, puis rechargés dans la liste déroulante.
+   * Pour éviter d'alterner fréquemment entre clavier et souris, vous pouvez aussi corriger exclusivement au clavier. (Voir raccourcis plus bas). Les raccourcis types VIM (h/j/k/l au lieu des flèches) permettent de garder les mains centrées sur le clavier et de réduire les mouvements.
+
+### Finalisation (\~ 10 min)
 
 9. Trier les étudiants par page (dans la toolbar de la liste des étudiants), pour les remettre dans le même ordre que le lot initialement scanné.
 10. Appuyer sur l'icone d'impression en haut à droite pour exporter dans un format imprimable.
-11. Imprimer. (~ 2 minute)
-12. Découper les résultats, d'abord dans le sens de la longueur (au massicot / coupe papier) 
-puis au ciseaux. (~ 3 minutes)
-13. Agrafer les résultats sur les copies. (~5 minutes)
-    Remarque : Pour les contrôles courts, pas forcément nécessaire d'agrafer.
+11. Imprimer.
+12. Découper les résultats
+* Il faut être très vigilant à cette étape, on peut facilement mélanger les papiers et perdre l'ordre des copies.
+* Vérifier que vous avez bien fait l'étape 9, sinon il faut refaire 9,10,11
+* Découper d'abord dans le sens de la longueur (3 colonnes par défaut), puis en largeur
+* Il existe des coupes papiers très pratiques sous la forme d'une plaque avec une lame coulissable, trouvable en ligne pour une dizaine d'euros.
+* On peut découper chaque colonne de haut en bas, de gauche à droite, puis placer les papiers dans une pile à l'envers, pour obtenir le même ordre que les copies.
+13. Agrafer les résultats sur les copies.
+* Pour accélérer cette phase, une petite agrafeuse qui tient dans la main est préférable, pour éviter de la reposer à chaque fois.
+* Pour des petits contrôles sur feuille recto/verso, une fois les élèves habitués, il peut être envisageable de ne pas agrafer et de rendre les papiers en même temps que les copies.
 14. Trier les étudiants par ordre alphabétique (dans la toolbar de la liste des étudiants), sauvegarder, ouvrir le ODS à la feuille "Total", puis copier coller dans Pronote ou autre logiciel. (Plus rapide à faire qu'à la main)
 
 ## Raccourcis clavier
 
 La zone de notation peut se parcourir entièrement au clavier.
 
-| Touche | Effet |
-| --- | --- |
-| ↑ / ↓ · k / j | question précédente / suivante |
-| ← / → · h / l | étudiant précédent / suivant, en restant sur la même question |
-| 0-9 | met la première note du barème qui contient ce chiffre : avec 0 0.5 1, la touche 5 met 0.5, la touche 1 met 1. Le même chiffre tout de suite après passe à la note suivante qui le contient : avec 0 0.5 1 1.5 2, 1 puis 1 met 1.5. |
-| Retour arrière / Suppr | efface la note de la question |
-| Espace | ouvre le commentaire de la question courante |
-| Maj + Espace | ouvre la case de note, pour une note hors des boutons (tapée, ou choisie dans sa liste) |
-| Maj + ↑ / ↓ · Maj + k / j | fait défiler le PDF |
-| Page préc. / suiv. | page précédente / suivante du PDF |
-| Clic molette | étudiant suivant |
-| Ctrl + S | enregistre les notes au format ODS |
-| Ctrl + Entrée | dans un commentaire : garde la phrase dans la liste de suggestions |
-| ↑ / ↓ · Tab / Maj + Tab | dans une liste : déroule les suggestions |
+|Touche|Effet|
+|-|-|
+|↑ / k|question précédente|
+|↓ / j|question suivante|
+|← / h|étudiant précédent|
+|→ / l / Clic molette|étudiant suivant|
+|0-9|mettre la première note du barème qui contient ce chiffre|
+|Retour arrière / Suppr|effacer la note de la question|
+|Espace|éditer le commentaire de la question courante|
+|Maj + Espace|spécifier une note manuellement|
+|Maj + ↑ / ↓ · Maj + k / j|faire défiler le PDF|
+|Page préc. / suiv.|page précédente / suivante du PDF|
+|Ctrl + S|enregistrer les notes au format ODS|
+|Ctrl + Entrée|dans un commentaire : garder la phrase dans la liste de suggestions|
+|↑ / ↓ · Tab / Maj + Tab|dans une liste : dérouler les suggestions|
 
 ## Astuces
 
 * Pour recharger un travail précédent, importer la dernière sauvegarde (dossier en haut à droite), et rouvrir le PDF associé (dossier en haut à gauche).
-* Pour une appréciation commune à une tranche de notes (par ex. « Excellent travail ! » à partir de 16/20), cliquer sur les deux bulles au bout de la barre d'appréciation : la phrase s'ajoute à l'appréciation de chaque étudiant entièrement noté dont le total tombe dans l'intervalle.
+* Pour une appréciation commune à une tranche de notes (par ex. « Excellent travail ! » à partir de 16/20), cliquer sur les bulles au bout de la barre d'appréciation.
 * L'interface est un fichier html qui tourne en local et peut être téléchargé sur clé USB.
+
