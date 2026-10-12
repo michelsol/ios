@@ -11,10 +11,10 @@ Vous pouvez télécharger la page de l'interface et couper internet lors de l'ut
 L'interface s'ouvre avec un lot de copies déjà chargé, prêt à corriger. Rien à installer ni à télécharger.
 
 [Premier exemple (Gros contrôle)](https://michelsol.github.io/ios/examples/example_2.html).
-[Enoncé et corrigé](https://michelsol.github.io/ios/examples/correction_2.html).
+[Enoncé et corrigé](https://michelsol.github.io/ios/examples/correction_2.pdf).
 
 [Deuxième exemple (Petit contrôle)](https://michelsol.github.io/ios/examples/example_1.html).
-[Enoncé et corrigé](https://michelsol.github.io/ios/examples/correction_1.html).
+[Enoncé et corrigé](https://michelsol.github.io/ios/examples/correction_1.pdf).
 
 ### Avantages
 
