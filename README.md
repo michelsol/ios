@@ -1,24 +1,32 @@
+# IOS
+
 [IOS](https://michelsol.github.io/ios/ios.html) est une interface pour corriger les copies par ordinateur.
 
-L'interface est [open-source](https://github.com/michelsol/ios) et fonctionne strictement sans serveur, sur votre ordinateur.
+L'interface est [open-source](https://github.com/michelsol/ios) sous [licence GNU GPL](https://github.com/michelsol/ios/blob/main/LICENSE) et fonctionne strictement sans serveur, sur votre ordinateur.
 
 Vous pouvez télécharger la page de l'interface et couper internet lors de l'utilisation si vous le souhaitez.
 
-## Exemple clé en main
+## Exemples clé en main
 
-[Essayer tout de suite](https://michelsol.github.io/ios/examples/example.html) : l'interface s'ouvre avec un lot de copies et une sauvegarde d'exemple déjà chargés, prête à corriger. Rien à installer ni à télécharger.
+L'interface s'ouvre avec un lot de copies déjà chargé, prêt à corriger. Rien à installer ni à télécharger.
 
-### Avantages supposés
+[Premier exemple (Gros contrôle)](https://michelsol.github.io/ios/examples/example_2.html).
+[Enoncé et corrigé](https://michelsol.github.io/ios/examples/correction_2.html).
+
+[Deuxième exemple (Petit contrôle)](https://michelsol.github.io/ios/examples/example_1.html).
+[Enoncé et corrigé](https://michelsol.github.io/ios/examples/correction_1.html).
+
+### Avantages
 
 * Confort mental : Possible de corriger transversalement avec très peu d'informations en tête.
 * Confort physique : Mouvements de faible amplitude, position relâchée.
 * Gain de temps ou de qualité de correction possible pour les grands contrôles
 * Informatisation de toutes les copies => triche ultérieure impossible, post-traitement informatisé des copies possible.
 
-### Désavantages supposés
+### Désavantages
 
 * Temps de préparation et de finalisation non négligeables => peu rentable pour petits contrôles.
-* Commentaires non précisément localisés (Cependant, il existe un bouton pour annoter au stylo rouge, des captures rectangulaires)
+* Commentaires non précisément localisés (Cependant, il existe un bouton pour annoter au stylo rouge, des captures d'écran rectangulaires)
 * Usage de papier, d'encre, d'agrafes, pour imprimer les notes et commentaires (possibilité de condenser le format d'export)
 
 ## Comment l'utiliser ?
