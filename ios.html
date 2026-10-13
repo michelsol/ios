@@ -1998,6 +1998,12 @@ function editIcon() {
   return svg;
 }
 
+// A fresh tick icon node: what the edit toggle shows while editing, since pressing it then
+// applies the changes (the same tick as the dialogs' own ✓).
+function checkIcon() {
+  return svgIcon('<polyline points="20 6 9 17 4 12"/>');
+}
+
 // The ▲▼ pair of a question row (only rendered while it is being edited).
 function buildQuestionMoves(key, disableUp, disableDown) {
   const wrap = document.createElement("div");
@@ -2369,14 +2375,14 @@ function removeShot(key, i) {
   paintShots(key);
 }
 
-// The pencil toggle that opens a question for editing (and, pressed, applies it).
+// The pencil toggle that opens a question for editing; while it is open, a tick that applies it.
 function buildEditToggle(key, on) {
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "qedit" + (on ? " on" : "");
   btn.title = on ? "Apply changes" : "Edit question";
   if (key !== null) btn.dataset.key = key;
-  btn.appendChild(editIcon());
+  btn.appendChild(on ? checkIcon() : editIcon());   // while editing, a press validates
   return btn;
 }
 
@@ -3504,6 +3510,7 @@ function paintStudentEdit() {
   btnStudentEdit.classList.toggle("on", on);
   btnStudentEdit.setAttribute("aria-pressed", on ? "true" : "false");
   btnStudentEdit.title = on ? "Apply changes" : "Edit this student";
+  btnStudentEdit.replaceChildren(on ? checkIcon() : editIcon());   // while editing, a press validates
   btnStudentEdit.disabled = !on && !currentStudent;
   for (const el of [seName, sePage, seGroup]) el.classList.remove("qedit-invalid");
   refreshPositionButton();
