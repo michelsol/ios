@@ -44,7 +44,6 @@ L'interface s'ouvre avec un lot de copies déjà chargé, prêt à corriger. Rie
 4. Créer la liste des étudiants à droite, avec le + en bas de la liste déroulante des étudiants.
 
    * Vous pouvez copier une liste de noms d'élèves depuis un tableur (téléchargée par ex. depuis pronote), et la coller directement (CTRL+v) dans le nom d'un nouvel étudiant.
-   * Un nouvel étudiant reçoit la page du PDF affichée, et le groupe de l'étudiant précédent.
 5. Faire un premier passage sur le lot. A chaque passage sur une nouvelle copie :
 
    * Sélectionner l'étudiant correspondant
@@ -62,7 +61,6 @@ Les sauvegardes sont des fichiers ODS manuellement lisibles, et modifiables avec
    * La correction peut se faire de façon transversale en traitant toutes les copies successivement, pour chaque question ou petit groupe de questions dépendantes.
    * En cas de correction transversale, penser à enclencher la feuille avec un point rouge, pour garder en mémoire la position précise du défilement dans le PDF pour chaque étudiant.
    * Si vous corrigez à la souris, vous pouvez sauter à l'étudiant suivant avec le clic molette, ce qui permet de corriger des questions simples en bougeant très peu la main.
-   * Les commentaires déjà écrits (découpés au « ; ») sont proposés automatiquement dans la liste déroulante, les plus utilisés en premier. Taper les premières lettres filtre la liste, et la première suggestion s'écrit en bleu à la suite : continuer à taper la remplace, Entrée l'accepte (une seconde fois Entrée valide le commentaire). Un clic dans la case déroule ou replie la liste. De même pour les appréciations.
    * Pour éviter d'alterner fréquemment entre clavier et souris, vous pouvez aussi corriger exclusivement au clavier. (Voir raccourcis plus bas). Les raccourcis types VIM (h/j/k/l au lieu des flèches) permettent de garder les mains centrées sur le clavier et de réduire les mouvements.
 
 ### Finalisation (\~ 10 min)
@@ -73,9 +71,9 @@ Les sauvegardes sont des fichiers ODS manuellement lisibles, et modifiables avec
 12. Découper les résultats
 * Il faut être très vigilant à cette étape, on peut facilement mélanger les papiers et perdre l'ordre des copies.
 * Vérifier que vous avez bien fait l'étape 9, sinon il faut refaire 9,10,11
-* Découper d'abord dans le sens de la longueur (3 colonnes par défaut), puis en largeur
+* Découper d'abord dans le sens de la longueur (3 colonnes par défaut) en empilant toutes les feuilles
+* Prendre chaque colonne, de gauche à droite et découper chaque rectangle, puis placer les dans une pile à l'envers, pour obtenir le même ordre que les copies.
 * Il existe des coupes papiers très pratiques avec une lame coulissante, trouvable en ligne pour une dizaine d'euros.
-* On peut découper chaque colonne de haut en bas, de gauche à droite, puis placer les papiers dans une pile à l'envers, pour obtenir le même ordre que les copies.
 13. Agrafer les résultats sur les copies.
 * Pour accélérer cette phase, une petite agrafeuse qui tient dans la main est préférable, pour éviter de la reposer à chaque fois.
 * Pour des petits contrôles sur feuille recto/verso, une fois les élèves habitués, il peut être envisageable de ne pas agrafer et de rendre les papiers en même temps que les copies.
