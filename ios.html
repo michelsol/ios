@@ -291,7 +291,6 @@
   }
   .combo-arrow:hover { background: #e9ebee; color: var(--text); }
   /* Leading arrow (the comment and feedback boxes): its separator is on the other side. */
-  .combo-arrow.left { border-left: 0; border-right: 1px solid var(--border); }
   #comboPopup {
     position: fixed;
     z-index: 1000;
@@ -979,8 +978,6 @@
         <span class="totalLabel" title="Total over the questions graded so far"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="6"/><path d="M15.48 12.89 17 22l-5-3-5 3 1.52-9.11"/></svg><span id="totalValue">0</span><span class="max" id="totalMax"> / 0</span></span>
         <span class="vsep"></span>
         <div class="combo" id="feedbackCombo">
-          <button type="button" id="feedbackArrow" class="combo-arrow left" tabindex="-1"
-                  title="Feedback suggestions">&#9662;</button>
           <input type="text" id="globalFeedback" class="qcomment" autocomplete="off" placeholder="">
         </div>
         <button type="button" class="secondary" id="rngOpenBtn" tabindex="-1"
@@ -1428,7 +1425,7 @@ function phraseCounts(input) {
 // finished there is not a search, so unfolding the list on "Calcul faux" offers everything
 // else, and a pick goes after it rather than in its place. (See redrawComboOnInput.)
 function segmentStart(input) {
-  const value = input.value;
+  const value = typedValue(input);
   if (!input._typed) return value.length;
   const base = input._base || "";
   const from = value.lastIndexOf(";") + 1;
@@ -1436,7 +1433,7 @@ function segmentStart(input) {
 }
 
 function currentSegment(input) {
-  return input.value.slice(segmentStart(input)).trim();
+  return typedValue(input).slice(segmentStart(input)).trim();
 }
 
 // The list a box offers, as [{ text, n, here }]: every phrase it has not got already, narrowed
@@ -1444,7 +1441,7 @@ function currentSegment(input) {
 // hold it further in after. Within each, the phrases already written on this question lead,
 // most used here first; then the rest, most used anywhere first.
 function suggestions(input) {
-  const value = input.value, at = segmentStart(input);
+  const value = typedValue(input), at = segmentStart(input);
   const typed = foldPhrase(value.slice(at));
   const taken = new Set(splitPhrases(value.slice(0, at)));
   const start = [], within = [];
@@ -1459,8 +1456,11 @@ function suggestions(input) {
 }
 
 // A box with a suggestion list of its own: the plain rows of openCombo, each with its count,
-// and a dot on the ones already written on this question.
-function phraseBox(input) {
+// and a dot on the ones already written on this question. `store` keeps what the box says
+// (the comment, or the feedback). A click unfolds the list and a second one folds it; typing
+// unfolds it too, and writes the top suggestion's ending in ahead of the caret (see
+// showCompletion).
+function phraseBox(input, store) {
   input._comboItems = () => {
     const list = suggestions(input);
     input._phraseUses = new Map(list.map(p => [p.text, p]));
@@ -1469,6 +1469,92 @@ function phraseBox(input) {
   const use = text => input._phraseUses.get(text) || { n: 0, here: 0 };
   input._comboItemScore = text => "×" + use(text).n;
   input._comboItemClass = text => (use(text).here ? "here" : "");
+  input._comboClickToggles = true;
+  input._phraseStore = store;
+  // Enter takes the suggested ending — unless a row of the list is highlighted, which Enter
+  // picks instead (see the keydown handler). Escape drops the ending; when the list is open,
+  // the same press folds it too.
+  input.addEventListener("keydown", e => {
+    if (e.isComposing || e.ctrlKey || e.metaKey || e.altKey) return;
+    const listOpen = comboPopup.classList.contains("open");
+    if (e.key === "Enter" && !(listOpen && comboIndex >= 0)) {
+      if (acceptCompletion(input)) e.preventDefault();
+    } else if (e.key === "Escape" && dropCompletion(input) && !listOpen) {
+      e.preventDefault();        // this press was for the ending alone
+    }
+  });
+  // An ending never taken is never kept: leaving the box drops it. (Its "change" has fired by
+  // then, and stores only what was typed: see onCommentChange.)
+  input.addEventListener("blur", () => dropCompletion(input));
+}
+
+// ---- The suggested ending ----
+// While a phrase is typed, the top suggestion that starts with it is written in ahead of the
+// caret, selected: typing on replaces it, Enter takes it (see phraseBox). `_completion` is
+// { from, to, text }: where the ending runs, and the whole suggestion it comes from. It only
+// counts while the box still ends with it, selected — moving the caret off it, or typing
+// over it, makes it ordinary text or nothing at all.
+function pendingCompletion(input) {
+  const c = input._completion;
+  if (!c) return null;
+  if (input.value.length !== c.to || input.selectionStart !== c.from || input.selectionEnd !== c.to) {
+    input._completion = null;
+    return null;
+  }
+  return c;
+}
+
+// The box as typed: without a suggested ending still on offer.
+function typedValue(input) {
+  const c = pendingCompletion(input);
+  return c ? input.value.slice(0, c.from) : input.value;
+}
+
+// Case and accents folded, character for character: "É" and "e" are one letter here, and the
+// lengths still line up with the original text.
+function foldChars(s) {
+  return String(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+// Write the top suggestion's ending in after the caret, selected. Only at the end of the box,
+// and only for a suggestion that starts with what is being typed: one that merely holds it
+// further in has no ending to offer.
+function showCompletion(input) {
+  input._completion = null;
+  const value = input.value;
+  if (input.selectionStart !== value.length || input.selectionEnd !== value.length) return;
+  const typed = value.slice(segmentStart(input)).replace(/^\s+/, "");
+  if (!typed.trim()) return;
+  const top = suggestions(input)[0];
+  if (!top || top.text.length <= typed.length) return;
+  if (foldChars(top.text.slice(0, typed.length)) !== foldChars(typed)) return;
+  input.value = value + top.text.slice(typed.length);
+  input.setSelectionRange(value.length, input.value.length);
+  input._completion = { from: value.length, to: input.value.length, text: top.text };
+}
+
+// Enter on a suggested ending: the suggestion takes the place of the phrase typed, in its own
+// capitals and accents, as a pick from the list would. The box keeps the keys — a second
+// Enter is what says the comment is done.
+function acceptCompletion(input) {
+  const c = pendingCompletion(input);
+  if (!c) return false;
+  input.value = input.value.slice(0, c.from);
+  input._completion = null;
+  pickPhrase(input, c.text);
+  closeCombo();
+  input.setSelectionRange(input.value.length, input.value.length);
+  if (input._phraseStore) input._phraseStore();
+  return true;
+}
+
+// Take a suggested ending back out, leaving what was typed. Says whether there was one.
+function dropCompletion(input) {
+  const c = pendingCompletion(input);
+  if (!c) return false;
+  input.value = input.value.slice(0, c.from);
+  input._completion = null;
+  return true;
 }
 
 // A picked suggestion is appended to what's already in the box ("; " between), not
@@ -1481,8 +1567,9 @@ function joinPhrase(cur, val) {
 // A pick takes the place of the phrase being typed, which was only ever the way to find it:
 // "Bon début; calc" and "Calcul faux" make "Bon début; Calcul faux".
 function pickPhrase(input, val) {
-  const at = segmentStart(input);
-  input.value = joinPhrase(currentSegment(input) ? input.value.slice(0, at) : input.value, val);
+  const at = segmentStart(input), typed = typedValue(input);
+  input._completion = null;
+  input.value = joinPhrase(currentSegment(input) ? typed.slice(0, at) : typed, val);
   input._typed = false;                  // what follows the pick is a new phrase
   input._base = input.value;
 }
@@ -2069,24 +2156,10 @@ function buildQuestionBlock(q, disableUp, disableDown, isDraft) {
     comment.autocomplete = "off";
     comment._comboSelect = (val) => { pickPhrase(comment, val); onCommentChange(comment); };
     // Its list is every comment already written (see phraseBox): there is nothing to manage.
-    phraseBox(comment);
+    // No arrow: a click unfolds it, and so does typing.
+    phraseBox(comment, () => onCommentChange(comment));
     comment.addEventListener("change", () => onCommentChange(comment));
     redrawComboOnInput(comment);
-    // A click never unfolds the list — clicking in the box, placing the caret, double-clicking a
-    // word drop no popup over the rows. The arrow does, and typing does (redrawComboOnInput).
-    comment._comboArrowOnly = true;
-    const arrow = document.createElement("button");
-    arrow.type = "button";
-    arrow.className = "combo-arrow left";
-    arrow.tabIndex = -1;
-    arrow.title = "Comment suggestions";
-    arrow.textContent = "▾";
-    arrow.addEventListener("mousedown", e => {
-      e.preventDefault(); // keep focus where it is
-      (activeComboInput === comment && comboPopup.classList.contains("open"))
-        ? closeCombo() : openCombo(comment);
-    });
-    combo.appendChild(arrow);
     combo.appendChild(comment);
     block.appendChild(combo);
 
@@ -2398,7 +2471,7 @@ function renderQuestions() {
 // Save a typed/selected comment for the current student (and so count its phrases).
 function onCommentChange(input) {
   const key = input.dataset.key;
-  const value = input.value.trim();
+  const value = typedValue(input).trim();   // never a suggested ending not taken
   if (currentStudent) {
     if (!commentsByStudent[currentStudent]) commentsByStudent[currentStudent] = {};
     commentsByStudent[currentStudent][key] = value;
@@ -2543,8 +2616,11 @@ function redrawComboOnInput(input) {
   input.addEventListener("input", e => {
     if (e._quiet) return;
     input._typed = true;
+    input._completion = null;                 // whatever was on offer has been typed over
     const open = activeComboInput === input && comboPopup.classList.contains("open");
     if (open || currentSegment(input)) openCombo(input);   // openCombo folds an empty list
+    // A deletion offers nothing back: Backspace takes the ending away, then the letters.
+    if (!String(e.inputType || "").startsWith("delete")) showCompletion(input);
   });
 }
 
@@ -3232,9 +3308,9 @@ function saveCurrentStudent() {
   // ".question .qcomment", not ".qcomment": the feedback box sits in the list too (in
   // #totalBar) and carries the same class, but it is saved on its own line below.
   questionsEl.querySelectorAll(".question .qcomment").forEach(input => {
-    comments[input.dataset.key] = input.value.trim();
+    comments[input.dataset.key] = typedValue(input).trim();   // a suggested ending is not theirs
   });
-  feedbackByStudent[currentStudent] = globalFeedback.value;
+  feedbackByStudent[currentStudent] = typedValue(globalFeedback);
   recordPositionIfOn();  // while recording: remember where the PDF was left for this student
 }
 
@@ -5145,15 +5221,8 @@ const storeFeedback = () => {
   if (currentStudent) feedbackByStudent[currentStudent] = globalFeedback.value;
 };
 globalFeedback._comboSelect = (val) => { pickPhrase(globalFeedback, val); storeFeedback(); };
-phraseBox(globalFeedback);
+phraseBox(globalFeedback, storeFeedback);   // like the comment boxes: a click or typing unfolds it
 redrawComboOnInput(globalFeedback);
-// Like the comment boxes: a click unfolds nothing; the arrow and typing do.
-globalFeedback._comboArrowOnly = true;
-document.getElementById("feedbackArrow").addEventListener("mousedown", e => {
-  e.preventDefault(); // keep focus where it is
-  (activeComboInput === globalFeedback && comboPopup.classList.contains("open"))
-    ? closeCombo() : openCombo(globalFeedback);
-});
 
 // Zoom controls.
 document.getElementById("btnPdfZoomIn").addEventListener("click", () => zoomPdf(1.2));
@@ -5393,11 +5462,16 @@ document.addEventListener("pointerdown", e => {
 // A box keeps focus after its list closes (a pick, Escape, a scroll), and focus alone
 // won't fire again — so a click on a combo box reopens its list too. "click", not
 // "mousedown": on a first click, focus (fired on mousedown) has already opened it.
-// Boxes marked _comboArrowOnly are exempt: their list is the arrow's business alone.
+// Boxes marked _comboArrowOnly are exempt: their list is the arrow's business alone. Boxes
+// marked _comboClickToggles (the comments and the feedback, which have no arrow) fold an open
+// list on a second click.
 document.addEventListener("click", e => {
   const input = e.target.closest && e.target.closest(".combo input");
   if (!input || !input._comboItems || input._comboArrowOnly) return;
-  if (activeComboInput === input && comboPopup.classList.contains("open")) return;
+  if (activeComboInput === input && comboPopup.classList.contains("open")) {
+    if (input._comboClickToggles) closeCombo();
+    return;
+  }
   openCombo(input);
 });
 questionsEl.addEventListener("scroll", () => { if (comboPopup.classList.contains("open")) closeCombo(); });
