@@ -63,7 +63,7 @@ Les sauvegardes sont des fichiers ODS manuellement lisibles, et modifiables avec
    * La correction peut se faire de façon transversale en traitant toutes les copies successivement, pour chaque question ou petit groupe de questions dépendantes.
    * En cas de correction transversale, penser à enclencher la feuille avec un point rouge, pour garder en mémoire la position précise du défilement dans le PDF pour chaque étudiant.
    * Si vous corrigez à la souris, vous pouvez sauter à l'étudiant suivant avec le clic molette, ce qui permet de corriger des questions simples en bougeant très peu la main.
-   * Les commentaires peuvent être personnalisés et sauvegardés, puis rechargés dans la liste déroulante.
+   * Les commentaires déjà écrits (découpés au « ; ») sont proposés automatiquement dans la liste déroulante, les plus utilisés en premier. Taper les premières lettres filtre la liste. De même pour les appréciations.
    * Pour éviter d'alterner fréquemment entre clavier et souris, vous pouvez aussi corriger exclusivement au clavier. (Voir raccourcis plus bas). Les raccourcis types VIM (h/j/k/l au lieu des flèches) permettent de garder les mains centrées sur le clavier et de réduire les mouvements.
 
 ### Finalisation (\~ 10 min)
@@ -99,7 +99,6 @@ La zone de notation peut se parcourir entièrement au clavier.
 |Maj + ↑ / ↓ · Maj + k / j|faire défiler le PDF|
 |Page préc. / suiv.|page précédente / suivante du PDF|
 |Ctrl + S|enregistrer les notes au format ODS|
-|Ctrl + Entrée|dans un commentaire : garder la phrase dans la liste de suggestions|
 |↑ / ↓ · Tab / Maj + Tab|dans une liste : dérouler les suggestions|
 
 ## Astuces
