@@ -172,7 +172,22 @@
   #studentCombo.graded   { border-left-color: var(--graded);   background: var(--graded-bg); }
   #studentCombo.ungraded { border-left-color: var(--ungraded); background: var(--ungraded-bg); }
   #studentCombo .qcomment, #studentCombo .combo-arrow { position: relative; }  /* above the fill */
-  #studentGroupCombo { flex: 0 1 8em; min-width: 5em; }
+  /* The box only shows the student: it is never typed in (see beginStudentEdit), and a press
+     anywhere on it unfolds the list. */
+  #studentSelect { cursor: pointer; text-overflow: ellipsis; }
+  /* The bar in edit mode: the student's name, page and group in place of the box. */
+  #studentEdit { display: none; flex: 1 1 auto; min-width: 0; align-items: center; gap: 6px; }
+  #studentBar.editing #studentCombo { display: none; }
+  #studentBar.editing #studentEdit { display: flex; }
+  #studentEdit label { color: var(--muted); }
+  #studentEdit label svg { width: 17px; height: 17px; }
+  #seName, #sePage {
+    font: inherit; padding: 6px 8px; min-width: 0;
+    border: 1px solid var(--border); border-radius: 6px; background: #fff; color: var(--text);
+  }
+  #seName { flex: 3 1 120px; }
+  #sePage { flex: 0 0 auto; width: 64px; text-align: center; font-variant-numeric: tabular-nums; }
+  #seGroupCombo { flex: 1 1 90px; min-width: 70px; }
   /* Stacked button pairs (prev/next page, move page), about one combo's height. */
   .nav-stack { flex: 0 0 auto; display: flex; flex-direction: column; gap: 2px; }
   .nav-stack button.nav {
@@ -189,9 +204,11 @@
   #btnPageUp svg, #btnPageDown svg { width: 22px; height: 14px; display: block; }
   .nav-stack #btnPagePrev, .nav-stack #btnPageNext { width: 52px; }      /* wider: easier to hit */
   .nav-stack #btnPrev, .nav-stack #btnNext { width: auto; padding: 0 22px; }
-  /* The "no page yet" mark, inside the student box (see showStudentPage). */
-  #studentPageTag, #studentScoreTag { flex: 0 0 auto; align-self: center; margin: 0 6px 0 0; }
-  #studentPageTag:empty, #studentScoreTag:empty { display: none; }
+  /* Group, page and score, inside the student box (see showStudentPage). */
+  #studentGroupTag, #studentPageTag, #studentScoreTag {
+    flex: 0 0 auto; align-self: center; margin: 0 6px 0 0; position: relative;  /* above the fill */
+  }
+  #studentGroupTag:empty, #studentPageTag:empty, #studentScoreTag:empty { display: none; }
   #studentScoreTag { font-variant-numeric: tabular-nums; }
   #btnSetPosition { display: inline-flex; align-items: center; justify-content: center; }
   #btnSetPosition svg { width: 16px; height: 16px; display: block; }
@@ -445,6 +462,24 @@
   .combo-tool.add { color: #15803d; font-size: 15px; }
   .combo-tool.add:hover:not(:disabled) { background: #e7f6ec; border-color: #bfe3cc; color: #15803d; }
   .combo-tool:disabled { opacity: 0.35; cursor: default; }
+  /* The footer under the list, mirroring the toolbar above it: one wide "+" (the student list
+     adds a student with it). */
+  .combo-footer {
+    position: sticky; bottom: 0; z-index: 1;
+    display: flex;
+    padding: 4px 6px;
+    background: #fff;
+    border-top: 1px solid var(--border);
+  }
+  .combo-add-row {
+    flex: 1 1 auto;
+    height: 22px; padding: 0;
+    border: 1px solid var(--border); border-radius: 4px;
+    background: #fff; color: #15803d;
+    font-size: 15px; font-weight: 700; line-height: 1;
+    cursor: pointer;
+  }
+  .combo-add-row:hover { background: #e7f6ec; border-color: #bfe3cc; }
   .question .qtitle {
     flex: 0 0 auto;
     font-weight: 600;
@@ -897,24 +932,44 @@
       </label>
       <div class="combo" id="studentCombo" title="Student's name">
         <div id="studentFill" class="combo-fill"></div>
-        <input type="text" id="studentSelect" class="qcomment" autocomplete="off" placeholder="…">
-        <span id="studentScoreTag" class="combo-tag" title="Score over the questions graded so far"></span>
+        <input type="text" id="studentSelect" class="qcomment" autocomplete="off" placeholder="…"
+               readonly tabindex="-1">
+        <span id="studentGroupTag" class="combo-tag" title="Student's group"></span>
         <span id="studentPageTag" class="combo-tag"></span>
+        <span id="studentScoreTag" class="combo-tag" title="Score over the questions graded so far"></span>
         <button type="button" id="studentArrow" class="combo-arrow" tabindex="-1">&#9662;</button>
       </div>
-      <label for="studentGroupInput" aria-label="Group">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <circle cx="9" cy="7" r="4"/>
-          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-          <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-        </svg>
-      </label>
-      <div class="combo" id="studentGroupCombo" title="Student's group">
-        <input type="text" id="studentGroupInput" class="qcomment" autocomplete="off" placeholder="…">
-        <button type="button" id="studentGroupArrow" class="combo-arrow" tabindex="-1">&#9662;</button>
+      <!-- The bar in edit mode (see beginStudentEdit): the student's name, page and group. -->
+      <div id="studentEdit">
+        <input type="text" id="seName" autocomplete="off" placeholder="…"
+               title="Student's name" aria-label="Name">
+        <label for="sePage" title="Page position in the PDF" aria-label="Page">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+          </svg>
+        </label>
+        <input type="text" id="sePage" inputmode="decimal" autocomplete="off" placeholder="–"
+               title="Page position in the PDF (3.5: halfway down page 3); empty: no page"
+               aria-label="Page">
+        <label for="seGroup" title="Student's group" aria-label="Group">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+          </svg>
+        </label>
+        <div class="combo" id="seGroupCombo" title="Student's group (leave blank for none)">
+          <input type="text" id="seGroup" class="qedit-group" autocomplete="off" placeholder="…">
+          <button type="button" id="seGroupArrow" class="combo-arrow" tabindex="-1">&#9662;</button>
+        </div>
+        <button type="button" id="seRemove" class="qremove" title="Remove this student">&#10005;</button>
       </div>
+      <button type="button" id="btnStudentEdit" class="qedit" title="Edit this student"
+              aria-label="Edit this student" aria-pressed="false" disabled></button>
     </div>
     <div id="questions">
       <!-- <div id="questionsEmpty">No questions yet.<br>Click "Load" to open a file, or add a question below.</div> -->
@@ -1182,8 +1237,14 @@ const studentCombo  = document.getElementById("studentCombo");
 const studentFill   = document.getElementById("studentFill");
 const progressEl    = document.getElementById("progress");
 const progressFill  = document.getElementById("progressFill");
-const studentGroupInput = document.getElementById("studentGroupInput");
-const studentGroupArrow = document.getElementById("studentGroupArrow");
+const studentBarEl  = document.getElementById("studentBar");
+const studentGroupTagEl = document.getElementById("studentGroupTag");
+const studentEditEl = document.getElementById("studentEdit");
+const seName        = document.getElementById("seName");
+const sePage        = document.getElementById("sePage");
+const seGroup       = document.getElementById("seGroup");
+const seRemove      = document.getElementById("seRemove");
+const btnStudentEdit = document.getElementById("btnStudentEdit");
 const studentPageTagEl = document.getElementById("studentPageTag");
 const studentScoreTagEl = document.getElementById("studentScoreTag");
 const btnSetPosition = document.getElementById("btnSetPosition");
@@ -2379,18 +2440,8 @@ function openCombo(input) {
       item.appendChild(span);
       item.title = s + " · " + note;
     }
-    // Optional score after the note (the student list shows each student's running total
-    // over the questions graded so far; a suggestion list, how often each phrase is used).
-    const score = input._comboItemScore ? input._comboItemScore(s) : "";
-    if (score) {
-      const span = document.createElement("span");
-      span.className = "combo-score";
-      span.textContent = score;
-      item.appendChild(span);
-      item.title += " · " + score;
-    }
-    // Optional small tag after that, as markup plus a tooltip text (the student list shows
-    // each student's page as an icon).
+    // Optional small tag after the note, as markup plus a tooltip text (the student list shows
+    // each student's page: an icon and its number).
     const tag = input._comboItemTag ? input._comboItemTag(s) : null;
     if (tag) {
       const span = document.createElement("span");
@@ -2399,11 +2450,24 @@ function openCombo(input) {
       item.appendChild(span);
       if (tag.title) item.title += " · " + tag.title;
     }
+    // Optional score last (the student list shows each student's running total over the
+    // questions graded so far; a suggestion list, how often each phrase is used).
+    const score = input._comboItemScore ? input._comboItemScore(s) : "";
+    if (score) {
+      const span = document.createElement("span");
+      span.className = "combo-score";
+      span.textContent = score;
+      item.appendChild(span);
+      item.title += " · " + score;
+    }
     // What this row commits, for the keyboard: a click has it in hand already.
     item._comboValue = s;
     item.addEventListener("mousedown", e => { e.preventDefault(); selectComboItem(s); });
     comboPopup.appendChild(item);
   }
+  // Optional footer under the items, mirroring the toolbar above them (the student list puts
+  // its "+" there).
+  if (input._comboFooter) comboPopup.appendChild(input._comboFooter());
   positionCombo();
   comboPopup.classList.add("open");
   // Keep the row that matters in view (a student just moved past the visible edge).
@@ -2916,6 +2980,7 @@ function recomputeTotal() {
 // at the target's questions, and re-render (each student can have a different set
 // of questions, so the question DOM must be rebuilt, not just re-applied).
 function switchToStudent(name) {
+  if (studentEdit) closeStudentEdit();   // the bar's edit belongs to the student it was opened on
   saveCurrentStudent();
   cancelCapture();            // an armed capture belongs to the student it was armed on
   editingKey = null;          // an open edit row belongs to the student it was opened on
@@ -2932,47 +2997,38 @@ function cloneScheme(scheme) {
                             split: q.split, group: q.group || "" }));
 }
 
-// Add a single student by name (the name typed in the student box, on Enter or from the
-// page button, which also sets their page). New students inherit a copy
-// of the currently selected student's questions (the draft when none).
-function addStudent() {
-  const name = (studentSelect.value || "").trim();
-  if (!name) return;
-  if (students.indexOf(name) >= 0) {
-    switchToStudent(name);
-    return;
-  }
-  saveCurrentStudent();
-  const scheme = cloneScheme(schemeFor(currentStudent));
+// A new student, with nothing graded yet. They inherit a copy of the current student's
+// questions (the draft scheme when there is none): one class usually sits one test.
+function createStudent(name) {
   students.push(name);
-  schemeByStudent[name] = scheme;
+  schemeByStudent[name] = cloneScheme(schemeFor(currentStudent));
   gradesByStudent[name] = {};   // every question starts ungraded
   commentsByStudent[name] = {};
   imagesByStudent[name] = {};
   feedbackByStudent[name] = "";
-  const group = studentGroupInput.value.trim();  // the group box's value (often the previous student's)
-  if (group) groupByStudent[name] = group;
-  studentSelect.value = name;
-  switchToStudent(name);
 }
 
-// Add several students at once (a column pasted from a spreadsheet). Like addStudent,
-// each inherits a copy of the current student's questions and the group box's value,
-// but none gets a position. Names already in the list are skipped. The selection
-// stays on the current student (the first new one when the list was empty).
-function addStudents(names) {
+// Give a student another name: everything kept under the old one moves to the new one, and
+// they keep their place in the list.
+function renameStudent(old, name) {
+  for (const map of [schemeByStudent, gradesByStudent, commentsByStudent, imagesByStudent,
+                     feedbackByStudent, scrollPosByStudent, groupByStudent]) {
+    if (old in map) { map[name] = map[old]; delete map[old]; }
+  }
+  students[students.indexOf(old)] = name;
+  if (currentStudent === old) currentStudent = name;
+}
+
+// Add several students at once (a column pasted into a new student's name). Like a student
+// added with "+", each inherits a copy of the current student's questions, and `group` when
+// one is given, but none gets a position. Names already in the list are skipped. The
+// selection stays on the current student (the first new one when the list was empty).
+function addStudents(names, group) {
   saveCurrentStudent();
-  const scheme = schemeFor(currentStudent);
-  const group = studentGroupInput.value.trim();
   const added = [];
   for (const name of names) {
     if (students.indexOf(name) >= 0) continue;   // also dedupes within the paste
-    students.push(name);
-    schemeByStudent[name] = cloneScheme(scheme);
-    gradesByStudent[name] = {};
-    commentsByStudent[name] = {};
-    imagesByStudent[name] = {};
-    feedbackByStudent[name] = "";
+    createStudent(name);
     if (group) groupByStudent[name] = group;
     added.push(name);
   }
@@ -2981,13 +3037,14 @@ function addStudents(names) {
   if (activeComboInput === studentSelect && comboPopup.classList.contains("open")) openCombo(studentSelect);
 }
 
-// Remove the currently selected student (from the "−" button).
+// Remove the currently selected student (from the ✕ of the bar's edit mode). Says whether it
+// was removed: the teacher may think again at the confirmation.
 function removeStudent() {
   if (!currentStudent || students.length === 0) {
     alert("No student selected to remove.");
-    return;
+    return false;
   }
-  if (!confirm('Remove student "' + currentStudent + '" and their grades?')) return;
+  if (!confirm('Remove student "' + currentStudent + '" and their grades?')) return false;
   const idx = students.indexOf(currentStudent);
   delete schemeByStudent[currentStudent];
   delete gradesByStudent[currentStudent];
@@ -3002,10 +3059,11 @@ function removeStudent() {
     schemeQuestions = [];     // fresh empty draft
     studentSelect.value = "";
     switchToStudent("");
-    return;
+    return true;
   }
   studentSelect.value = students[Math.min(idx, students.length - 1)];
   switchToStudent(studentSelect.value);
+  return true;
 }
 
 // Zoom the grading panel in/out (CSS zoom on the questions container).
@@ -3138,6 +3196,7 @@ function loadWorkbook(s) {
   recomputeGroups();
   editingKey = null;          // nothing from the previous file stays open
   editingDraft = null;
+  if (studentEdit) closeStudentEdit();
   currentStudent = students.length ? students[0] : "";
   schemeQuestions = schemeFor(currentStudent);
   studentSelect.value = currentStudent;
@@ -3171,11 +3230,8 @@ function saveCurrentStudent() {
 // Apply a student's stored selections to the radios and update the total.
 function loadStudent(name) {
   currentStudent = name || "";
-  if (currentStudent) {
-    studentSelect.value = currentStudent;
-    // Only with a student: an empty list keeps what was typed, for the next "+".
-    studentGroupInput.value = groupByStudent[currentStudent] || "";
-  }
+  studentSelect.value = currentStudent;
+  btnStudentEdit.disabled = !currentStudent && !studentEdit;   // the list's "+" adds the first
 
   globalFeedback.value = (currentStudent && feedbackByStudent[currentStudent]) || "";
   const comments = (currentStudent && commentsByStudent[currentStudent]) || {};
@@ -3274,15 +3330,6 @@ function sortStudentsByPosition() {
   updateNavButtons();
 }
 
-// Store the group box's value as the current student's group. Skipped while the name box
-// holds a different (new) name: the group box is then preparing the group for "+".
-function assignStudentGroup() {
-  if (!currentStudent || studentSelect.value.trim() !== currentStudent) return;
-  const g = studentGroupInput.value.trim();
-  if (g) groupByStudent[currentStudent] = g;
-  else delete groupByStudent[currentStudent];
-}
-
 // Shuffle into a random order (Fisher–Yates).
 function shuffleStudents() {
   if (students.length < 2) return;
@@ -3295,8 +3342,9 @@ function shuffleStudents() {
   updateNavButtons();
 }
 
-// Build the student popup's toolbar: move current up/down, remove current, sort A–Z, shuffle, sort by group,
-// sort by position in the PDF.
+// Build the student popup's toolbar: move current up/down, sort A–Z, shuffle, sort by group,
+// sort by position in the PDF. (Removing a student is in the bar's edit mode, adding is the
+// list's "+".)
 function buildStudentToolbar() {
   const bar = document.createElement("div");
   bar.className = "combo-toolbar";
@@ -3327,10 +3375,6 @@ function buildStudentToolbar() {
   };
   add(move("up"),   "Move current student up",   idx <= 0,                    () => moveCurrentStudent(-1));
   add(move("down"), "Move current student down", idx < 0 || idx >= students.length - 1, () => moveCurrentStudent(1));
-  const del = tool("&#8722;");
-  del.classList.add("del");
-  // Close the list first, so it doesn't linger behind the confirm dialog.
-  add(del, "Remove current student", idx < 0, () => { closeCombo(); removeStudent(); }, false);
   add(tool("A–Z"),  "Sort students alphabetically", students.length < 2, sortStudents);
   add(tool('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
            'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
@@ -3344,6 +3388,122 @@ function buildStudentToolbar() {
       "Sort students by group", students.length < 2, sortStudentsByGroup);
   add(tool(pageIcon()), "Sort students by position in the PDF", students.length < 2, sortStudentsByPosition);
   return bar;
+}
+
+// The list's footer: one wide "+", which adds a student in the bar's edit mode.
+function buildStudentFooter() {
+  const foot = document.createElement("div");
+  foot.className = "combo-footer";
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "combo-add-row";
+  btn.textContent = "+";
+  btn.title = "Add a student";
+  btn.addEventListener("mousedown", e => { e.preventDefault(); closeCombo(); startNewStudent(); });
+  foot.appendChild(btn);
+  return foot;
+}
+
+// ---- The student bar's edit mode ----
+// Like a question row: the pencil turns the bar into the student's name, page and group, and
+// pressed again (or Enter) applies them. Nothing changes until then. The box itself is never
+// typed in, so a student is only ever renamed on purpose.
+let studentEdit = null;   // null, or { isNew, page0 } while the bar is being edited
+
+// Show or hide the edit fields, and set the pencil to match.
+function paintStudentEdit() {
+  const on = !!studentEdit;
+  studentBarEl.classList.toggle("editing", on);
+  btnStudentEdit.classList.toggle("on", on);
+  btnStudentEdit.setAttribute("aria-pressed", on ? "true" : "false");
+  btnStudentEdit.title = on ? "Apply changes" : "Edit this student";
+  btnStudentEdit.disabled = !on && !currentStudent;
+  for (const el of [seName, sePage, seGroup]) el.classList.remove("qedit-invalid");
+  refreshPositionButton();
+}
+
+function openStudentEdit(isNew, name, page, group) {
+  closeCombo();
+  recordingPosition = false;   // the page is the field's business now (see onSetPositionClick)
+  studentEdit = { isNew, page0: page };
+  seName.value = name;
+  sePage.value = page;
+  seGroup.value = group;
+  seRemove.title = isNew ? "Discard this new student" : "Remove this student";
+  paintStudentEdit();
+  seName.focus();
+  seName.select();
+}
+
+// The pencil: edit the current student.
+function beginStudentEdit() {
+  if (studentEdit || !currentStudent) return;
+  saveCurrentStudent();
+  const page = hasPage(currentStudent) ? String(roundPos(scrollPosByStudent[currentStudent])) : "";
+  openStudentEdit(false, currentStudent, page, groupByStudent[currentStudent] || "");
+}
+
+// The list's "+": a new student, on the page in view and in the current student's group —
+// with the copy on screen, typing the name and Enter is the whole job.
+function startNewStudent() {
+  if (studentEdit && commitStudentEdit() === false) return;
+  const page = pageCanvases.length && !pdfRendering ? String(currentVisiblePage()) : "";
+  openStudentEdit(true, "", page, (currentStudent && groupByStudent[currentStudent]) || "");
+}
+
+// Leave edit mode, changing nothing.
+function closeStudentEdit() {
+  closeCombo();
+  if (studentEditEl.contains(document.activeElement)) document.activeElement.blur();
+  studentEdit = null;
+  paintStudentEdit();
+}
+
+// A page typed in the page box: a number of at least 1 (a comma will do for the point), null
+// for an empty box, NaN for anything else.
+function readPageField(text) {
+  if (!text) return null;
+  const n = Number(text.indexOf(".") < 0 ? text.replace(",", ".") : text);
+  return n >= 1 ? n : NaN;
+}
+
+// Apply the bar's fields. Returns the student's name, `false` when a field is refused (it
+// is marked, and the bar stays open), and null when there was nothing to apply — a new
+// student never named is simply dropped, like an untouched new question.
+function commitStudentEdit() {
+  if (!studentEdit) return null;
+  const { isNew, page0 } = studentEdit;
+  const name = seName.value.trim();
+  const pageText = sePage.value.trim();
+  const group = seGroup.value.trim();
+  if (isNew && !name) { closeStudentEdit(); return null; }
+  if (!name) { rejectField(seName); return false; }
+  const old = isNew ? null : currentStudent;
+  if (name !== old && students.indexOf(name) >= 0) { rejectField(seName); return false; }
+  // An untouched page box keeps the exact position: the box only shows it to 2 decimals.
+  const keepPage = !isNew && pageText === page0;
+  const page = keepPage ? null : readPageField(pageText);
+  if (Number.isNaN(page)) { rejectField(sePage); return false; }
+
+  saveCurrentStudent();
+  if (isNew) createStudent(name);
+  else if (name !== old) renameStudent(old, name);
+  if (!keepPage) {
+    if (page === null) delete scrollPosByStudent[name];
+    else scrollPosByStudent[name] = page;
+  }
+  if (group) groupByStudent[name] = group;
+  else delete groupByStudent[name];
+  closeStudentEdit();
+  switchToStudent(name);   // and to their page, which the new position may have moved
+  return name;
+}
+
+// The edit row's ✕: a new student is dropped, an existing one removed (once confirmed).
+function removeFromStudentEdit() {
+  if (!studentEdit) return;
+  if (studentEdit.isNew) { closeStudentEdit(); return; }
+  if (removeStudent()) closeStudentEdit();
 }
 
 // Stepping wraps around (see moveStudent), so ▲/▼ are only disabled with nowhere else to go.
@@ -3643,28 +3803,29 @@ function hasPage(name) {
 function recordPositionIfOn() {
   if (!recordingPosition || !pageCanvases.length || pdfRendering || !currentStudent) return;
   scrollPosByStudent[currentStudent] = pdfScrollPos();
+  showStudentPage();     // the page number in the box follows
 }
 
-// What a click on the page button would do, for the name in the student box:
-//   "create" — a new name: create that student, on the page in view;
+// What a click on the page button would do:
+//   "fill"   — the bar is being edited: put the page in view into its page box;
 //   "set"    — the current student has no page yet: give them the page in view (once);
 //   "toggle" — the current student has one: start/stop recording;
-//   ""       — nothing (no PDF, mid-render, or an empty box).
+//   ""       — nothing (no PDF, mid-render, or no student).
 function setPositionAction() {
-  const name = studentSelect.value.trim();
-  if (!name || !pageCanvases.length || pdfRendering) return "";
-  if (students.indexOf(name) < 0) return "create";
-  if (name !== currentStudent) return "";
-  return hasPage(name) ? "toggle" : "set";
+  if (!pageCanvases.length || pdfRendering) return "";
+  if (studentEdit) return "fill";
+  if (!currentStudent) return "";
+  return hasPage(currentStudent) ? "toggle" : "set";
 }
 
 // The page button. Setting a page takes the whole page in view (no jump: it's already in
 // view) and never turns recording on; turning recording on stores the exact spot at once.
 function onSetPositionClick() {
   const action = setPositionAction();
-  if (action === "create") {
-    addStudent();                                   // switches to the new student
-    scrollPosByStudent[currentStudent] = currentVisiblePage();
+  if (action === "fill") {
+    sePage.value = String(currentVisiblePage());
+    sePage.classList.remove("qedit-invalid");
+    return;
   } else if (action === "set") {
     scrollPosByStudent[currentStudent] = currentVisiblePage();
   } else if (action === "toggle") {
@@ -3677,30 +3838,28 @@ function onSetPositionClick() {
   refreshPositionButton();
 }
 
-// A student's "no page yet" tag (a crossed-out page); null once they have a page. Used in
-// the student list and in the student box.
+// A student's page tag: a page and its number, rounded to the page the copy is mostly on
+// (the exact position is in the tooltip), or a crossed-out page while they have none. Used
+// in the student list and in the student box.
 function studentPageTag(name) {
-  return hasPage(name) ? null : { html: pageIcon(true), title: "no page yet", cls: "unset" };
+  if (!hasPage(name)) return { html: pageIcon(true), title: "no page yet", cls: "unset" };
+  const pos = scrollPosByStudent[name];
+  return { html: pageIcon() + "<span>" + Math.round(pos) + "</span>", title: "page " + roundPos(pos) };
 }
 
-// Show the "no page yet" tag in the student box: for the current student without a page,
-// and for a new name being typed (a student-to-be has no page). Nothing when empty.
+// The current student's group and page tag, in the student box. Nothing with no student.
 function showStudentPage() {
-  const name = studentSelect.value.trim();
-  const isNew = name && students.indexOf(name) < 0;
-  const tag = !name ? null : studentPageTag(isNew ? "" : name);   // "" never has a page
+  const tag = currentStudent ? studentPageTag(currentStudent) : null;
   studentPageTagEl.innerHTML = tag ? tag.html : "";
   studentPageTagEl.title = tag ? tag.title : "";
   studentPageTagEl.classList.toggle("unset", !!(tag && tag.cls));
+  studentGroupTagEl.textContent = (currentStudent && groupByStudent[currentStudent]) || "";
 }
 
-// The score next to the name in the student bar: the same total / max over the graded
-// questions that the total row and the student list show. Like the page tag above, it goes
-// by the name in the box, so a half-typed new name doesn't wear the previous student's score.
+// The score in the student box: the same total / max over the graded questions that the total
+// row and the student list show.
 function showStudentScore() {
-  const name = studentSelect.value.trim();
-  const known = students.indexOf(name) >= 0 ? name : "";
-  const t = known && schemeFor(known).length ? computeTotals(known) : null;
+  const t = currentStudent && schemeFor(currentStudent).length ? computeTotals(currentStudent) : null;
   studentScoreTagEl.textContent = t ? fmt(t.sum) + " / " + fmt(t.max) : "";
 }
 
@@ -3710,12 +3869,12 @@ function refreshPositionButton() {
   const action = setPositionAction();
   if (!currentStudent || !hasPage(currentStudent)) recordingPosition = false;
   btnSetPosition.disabled = !action;
-  btnSetPosition.classList.toggle("unset", action === "create" || action === "set");
+  btnSetPosition.classList.toggle("unset", action === "set");
   const on = recordingPosition && action === "toggle";
   btnSetPosition.classList.toggle("recording", on);
   btnSetPosition.setAttribute("aria-pressed", on ? "true" : "false");
   btnSetPosition.title =
-    action === "create" ? "Create " + studentSelect.value.trim() + " and set their page to the page in view" :
+    action === "fill"   ? "Put the page in view into the page box" :
     action === "set"    ? "Set this student's page to the page in view" :
     on                  ? "Stop recording this student's position" :
     action === "toggle" ? "Record this student's position while scrolling" :
@@ -4852,8 +5011,8 @@ document.getElementById("fileGrades").addEventListener("change", e => {
   readFile(e.target, true, buf => { loadGradesWorkbook(buf); releaseToGrid(); });
 });
 
-// Student picker is an editable combobox: the popup lists existing students; choosing one
-// switches to it. Typing a new name + "+" adds it (see addStudent).
+// The student picker: the popup lists the students; choosing one switches to it. Its box is
+// never typed in — the pencil edits the student, the list's "+" adds one.
 studentSelect._comboItems = () => students;
 studentSelect._comboSelect = (name) => { switchToStudent(name); };
 // Green = fully graded, amber = not yet; the current student is also bolded ("current").
@@ -4870,31 +5029,53 @@ studentSelect._comboItemScore = (name) => {
 studentSelect._comboItemTag = studentPageTag;   // each student's page, or a crossed-out page
 btnSetPosition.addEventListener("click", onSetPositionClick);
 studentSelect._comboItemFill = studentFraction;                       // background = grading progress
-studentSelect.addEventListener("focus", () => openCombo(studentSelect));
-studentArrow.addEventListener("mousedown", e => {
-  e.preventDefault(); // keep focus where it is
+studentSelect._comboFooter = buildStudentFooter;                      // "+": a new student
+// A press anywhere on the box (its arrow included) unfolds or folds the list, and never takes
+// the keyboard: an open list is walked from wherever the keys are (see the keydown handler).
+studentSelect._comboArrowOnly = true;    // the document's click handler must not reopen it
+studentCombo.addEventListener("mousedown", e => {
+  e.preventDefault();
   (activeComboInput === studentSelect && comboPopup.classList.contains("open"))
     ? closeCombo() : openCombo(studentSelect);
 });
-// Student group: an editable combobox suggesting the groups in use. Editing it sets the
-// current student's group live; it also gives new students their group (see addStudent).
-studentGroupInput._comboItems = studentGroups;
-studentGroupInput._comboSelect = (group) => { studentGroupInput.value = group; assignStudentGroup(); };
-studentGroupInput.addEventListener("focus", () => openCombo(studentGroupInput));
-studentGroupInput.addEventListener("input", assignStudentGroup);
-studentGroupArrow.addEventListener("mousedown", e => {
-  e.preventDefault(); // keep focus where it is
-  (activeComboInput === studentGroupInput && comboPopup.classList.contains("open"))
-    ? closeCombo() : openCombo(studentGroupInput);
+// The bar's edit mode: the pencil opens and applies it, Enter applies it from any of its boxes,
+// Escape leaves it. An open group list has the first say over both (see the keydown handler):
+// Enter on a highlighted group picks it, Escape folds the list.
+btnStudentEdit.appendChild(editIcon());
+btnStudentEdit.addEventListener("click", () => (studentEdit ? commitStudentEdit() : beginStudentEdit()));
+seRemove.addEventListener("click", removeFromStudentEdit);
+studentEditEl.addEventListener("keydown", e => {
+  if (e.defaultPrevented || e.isComposing) return;
+  const listOpen = comboPopup.classList.contains("open");
+  if (e.key === "Enter" && !(listOpen && comboIndex >= 0)) {
+    e.preventDefault();
+    commitStudentEdit();
+  } else if (e.key === "Escape" && !listOpen) {
+    e.preventDefault();
+    closeStudentEdit();
+  }
 });
-// Enter in the student box creates the typed student (with no page; the page button
-// creates one on the page in view instead), or switches to them if they exist.
-studentSelect.addEventListener("keydown", e => {
-  if (e.key !== "Enter" || !studentSelect.value.trim()) return;
-  if (comboIndex >= 0) return;   // a highlighted name in the open list is what Enter picks
+// The group: a combobox suggesting the groups already in use.
+seGroup._comboItems = studentGroups;
+seGroup._comboSelect = (group) => { seGroup.value = group; };
+seGroup.addEventListener("focus", () => openCombo(seGroup));
+document.getElementById("seGroupArrow").addEventListener("mousedown", e => {
+  e.preventDefault(); // keep focus where it is
+  (activeComboInput === seGroup && comboPopup.classList.contains("open"))
+    ? closeCombo() : openCombo(seGroup);
+});
+// Pasting several lines (a column copied from a spreadsheet) into a new student's name adds
+// every name as a student, in the group the box holds. Only the first cell of each row
+// counts; a single line pastes as usual.
+seName.addEventListener("paste", e => {
+  if (!studentEdit || !studentEdit.isNew) return;
+  const text = (e.clipboardData || window.clipboardData).getData("text") || "";
+  const names = text.split(/\r?\n/).map(row => row.split("\t")[0].trim()).filter(Boolean);
+  if (names.length < 2) return;
   e.preventDefault();
-  closeCombo();
-  addStudent();
+  const group = seGroup.value.trim();
+  closeStudentEdit();
+  addStudents(names, group);
 });
 
 // The page selector's own ▲/▼, and the arrow keys (and wheel, when focused) in it, go back/forward
@@ -4919,22 +5100,6 @@ const onButtonPress = (btn, action) => btn.addEventListener("mousedown", e => {
 onButtonPress(btnPagePrev, () => stepPdfPage(-1));
 onButtonPress(btnPageNext, () => stepPdfPage(1));
 invertStepping(pageInput, stepPdfPage);
-// Typing in the student box changes its "no page yet" tag (a new name has no page) and
-// what the page button would do (create that student).
-studentSelect.addEventListener("input", () => {
-  showStudentPage();
-  showStudentScore();
-  refreshPositionButton();
-});
-// Pasting several lines (a column copied from a spreadsheet) adds every name as a student.
-// Only the first cell of each row counts; a single line pastes into the box as usual.
-studentSelect.addEventListener("paste", e => {
-  const text = (e.clipboardData || window.clipboardData).getData("text") || "";
-  const names = text.split(/\r?\n/).map(row => row.split("\t")[0].trim()).filter(Boolean);
-  if (names.length < 2) return;
-  e.preventDefault();
-  addStudents(names);
-});
 document.getElementById("btnPrev").addEventListener("click", () => moveStudent(-1));
 document.getElementById("btnNext").addEventListener("click", () => moveStudent(1));
 

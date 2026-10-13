@@ -43,14 +43,15 @@ Les estimations de temps sont données pour un contrôle de maths durant une heu
    * Les points possibles ont par ex. le format 0 1 \| 0.25 0.5 0.75. Les points fréquents avant \| sont affichés horizontalement, les points peu fréquents après \| sont suggérés en liste déroulante verticale.
    * Pour les gros contrôles, spécifier les exercices permet d'expliciter des sous-totaux.
    * Pour les petits contrôles, il est préférable de ne pas spécifier de titre d'exercice, pour gagner de la place sur le format exporté.
-4. Créer la liste des étudiants à droite.
+4. Créer la liste des étudiants à droite, avec le + en bas de la liste déroulante des étudiants.
 
-   * Vous pouvez copier une liste de noms d'élèves depuis un tableur (téléchargée par ex. depuis pronote), et la coller directement (CTRL+v).
+   * Vous pouvez copier une liste de noms d'élèves depuis un tableur (téléchargée par ex. depuis pronote), et la coller directement (CTRL+v) dans le nom d'un nouvel étudiant.
+   * Un nouvel étudiant reçoit la page du PDF affichée, et le groupe de l'étudiant précédent.
 5. Faire un premier passage sur le lot. A chaque passage sur une nouvelle copie :
 
    * Sélectionner l'étudiant correspondant
    * Appuyer sur la feuille avec un point rouge, pour associer la page du PDF, à cet étudiant.
-   * Vous pouvez aussi enregistrer un groupe associé à cet étudiant (par ex. sujet A ou B)
+   * Le crayon à droite de l'étudiant permet de modifier son nom, sa page et son groupe (par ex. sujet A ou B). Pendant la modification, la feuille avec un point rouge reporte la page affichée.
    * En cas de mauvais ordre ou orientation, il est possible de modifier le PDF en haut à gauche.
 6. Il est possible de trier la liste des étudiants aléatoirement, puis par groupe (pour mettre les sujets A avant les sujets B), dans la toolbar de la liste des étudiants.
 7. Enregistrer (Ctrl + S) en cliquant sur le bouton de sauvegarde sur la partie droite.
