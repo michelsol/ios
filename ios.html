@@ -428,6 +428,9 @@
     margin-left: 8px; font-size: 12px; color: var(--muted); font-weight: 400;
   }
   .combo-tag svg { width: 13px; height: 13px; flex: 0 0 auto; }
+  /* A group and a score may wear an icon too (the student list's do), like the page tag. */
+  .combo-note, .combo-score { display: inline-flex; align-items: center; gap: 3px; }
+  .combo-note svg, .combo-score svg { width: 13px; height: 13px; flex: 0 0 auto; }
   .combo-tag.unset { color: var(--unset); }
   .combo-label, .combo-note, .combo-score, .combo-tag { position: relative; } /* above the fill */
   .combo-label { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
@@ -580,8 +583,6 @@
     align-items: center;
     gap: 8px;
     margin-top: 10px;
-    padding-top: 12px;
-    border-top: 1px solid var(--border);
   }
   /* All question customization happens in edit mode, so adding is just one wide "+". */
   #addQuestionBar button { flex: 1 1 auto; }
@@ -713,6 +714,7 @@
      since the display above would otherwise win over the hidden attribute. */
   #totalBar[hidden] { display: none; }
   #totalBar .max { color: var(--muted); font-weight: 500; }
+  .totalLabel svg { width: 18px; height: 18px; margin-right: 6px; vertical-align: -2px; color: var(--muted); }
   #pdfBar .vsep, #totalBar .vsep, .question .vsep {
     flex: 0 0 auto; align-self: stretch; width: 1px; background: var(--border);
   }
@@ -974,7 +976,7 @@
     <div id="questions">
       <!-- <div id="questionsEmpty">No questions yet.<br>Click "Load" to open a file, or add a question below.</div> -->
       <div id="totalBar" hidden>  <!-- shown once there is a student (see renderQuestions) -->
-        <span class="totalLabel"><span id="totalValue">0</span><span class="max" id="totalMax"> / 0</span></span>
+        <span class="totalLabel" title="Total over the questions graded so far"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="6"/><path d="M15.48 12.89 17 22l-5-3-5 3 1.52-9.11"/></svg><span id="totalValue">0</span><span class="max" id="totalMax"> / 0</span></span>
         <span class="vsep"></span>
         <div class="combo" id="feedbackCombo">
           <button type="button" id="feedbackArrow" class="combo-arrow left" tabindex="-1"
@@ -2312,11 +2314,15 @@ function renderQuestions() {
   // A question that was removed (or that belongs to another student) can't stay open.
   if (editingKey !== null && !schemeQuestions.some(q => qKey(q) === editingKey)) editingKey = null;
   if (schemeQuestions.length === 0) {
-    const empty = document.createElement("div");
-    empty.id = "questionsEmpty";
-    // empty.innerHTML = 'No questions yet.<br>Click "Load" to open a file, or add a question below.';
-    empty.innerHTML = '';
-    questionsEl.appendChild(empty);
+    // The placeholder stands in for an empty list — not above the first question being
+    // created, where its margin would leave a gap that closes once that question is applied.
+    if (!editingDraft) {
+      const empty = document.createElement("div");
+      empty.id = "questionsEmpty";
+      // empty.innerHTML = 'No questions yet.<br>Click "Load" to open a file, or add a question below.';
+      empty.innerHTML = '';
+      questionsEl.appendChild(empty);
+    }
   } else {
     // Render group by group. Each group gets a separator row carrying its name, a live
     // subtotal and up/down controls. The default group ("") shows a blank-named bar too,
@@ -2436,7 +2442,9 @@ function openCombo(input) {
     if (note) {
       const span = document.createElement("span");
       span.className = "combo-note";
-      span.textContent = note;
+      // Optional icon before it, as markup (the student list's group icon).
+      if (input._comboItemNoteIcon) span.innerHTML = input._comboItemNoteIcon;
+      span.appendChild(document.createTextNode(note));
       item.appendChild(span);
       item.title = s + " · " + note;
     }
@@ -2456,7 +2464,10 @@ function openCombo(input) {
     if (score) {
       const span = document.createElement("span");
       span.className = "combo-score";
-      span.textContent = score;
+      // Optional icon before it, as markup (the student list's grade icon; a suggestion list's
+      // counts have none).
+      if (input._comboItemScoreIcon) span.innerHTML = input._comboItemScoreIcon;
+      span.appendChild(document.createTextNode(score));
       item.appendChild(span);
       item.title += " · " + score;
     }
@@ -3853,14 +3864,16 @@ function showStudentPage() {
   studentPageTagEl.innerHTML = tag ? tag.html : "";
   studentPageTagEl.title = tag ? tag.title : "";
   studentPageTagEl.classList.toggle("unset", !!(tag && tag.cls));
-  studentGroupTagEl.textContent = (currentStudent && groupByStudent[currentStudent]) || "";
+  const group = (currentStudent && groupByStudent[currentStudent]) || "";
+  studentGroupTagEl.innerHTML = group ? groupIcon() : "";
+  if (group) studentGroupTagEl.appendChild(document.createTextNode(group));   // a name, never markup
 }
 
 // The score in the student box: the same total / max over the graded questions that the total
 // row and the student list show.
 function showStudentScore() {
   const t = currentStudent && schemeFor(currentStudent).length ? computeTotals(currentStudent) : null;
-  studentScoreTagEl.textContent = t ? fmt(t.sum) + " / " + fmt(t.max) : "";
+  studentScoreTagEl.innerHTML = t ? gradeIcon() + fmt(t.sum) + " / " + fmt(t.max) : "";
 }
 
 // The page button's look: pressed while recording, amber when the next click sets a page,
@@ -3879,6 +3892,22 @@ function refreshPositionButton() {
     on                  ? "Stop recording this student's position" :
     action === "toggle" ? "Record this student's position while scrolling" :
                           "Set a student's page (open a PDF first)";
+}
+
+// A group icon (SVG markup): two people, as on the toolbar's "sort by group".
+function groupIcon() {
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+         'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+         '<circle cx="9" cy="7" r="4"/><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>' +
+         '<path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>';
+}
+
+// A grade icon (SVG markup): the award rosette, which stands for a student's total wherever
+// one is shown (the student box and list, the total bar, the range feedback).
+function gradeIcon() {
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+         'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+         '<circle cx="12" cy="8" r="6"/><path d="M15.48 12.89 17 22l-5-3-5 3 1.52-9.11"/></svg>';
 }
 
 // A page icon (SVG markup), optionally crossed out.
@@ -5020,6 +5049,8 @@ studentSelect._comboItemClass = (name) =>
   studentStatus(name) + (name === currentStudent ? " current" : "");
 studentSelect._comboToolbar = buildStudentToolbar;
 studentSelect._comboItemNote = (name) => groupByStudent[name] || "";  // greyed group after the name
+studentSelect._comboItemNoteIcon = groupIcon();
+studentSelect._comboItemScoreIcon = gradeIcon();
 // Their score so far, over the questions graded so far — the same pair the total row shows.
 studentSelect._comboItemScore = (name) => {
   if (schemeFor(name).length === 0) return "";   // no questions: nothing to score
