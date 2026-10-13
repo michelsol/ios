@@ -674,6 +674,9 @@
     font-weight: 700;
     background: #f9fafb;
   }
+  /* No student, nothing to total or to say: the bar waits (see renderQuestions). Spelled out,
+     since the display above would otherwise win over the hidden attribute. */
+  #totalBar[hidden] { display: none; }
   #totalBar .max { color: var(--muted); font-weight: 500; }
   #pdfBar .vsep, #totalBar .vsep, .question .vsep {
     flex: 0 0 auto; align-self: stretch; width: 1px; background: var(--border);
@@ -915,7 +918,7 @@
     </div>
     <div id="questions">
       <!-- <div id="questionsEmpty">No questions yet.<br>Click "Load" to open a file, or add a question below.</div> -->
-      <div id="totalBar">
+      <div id="totalBar" hidden>  <!-- shown once there is a student (see renderQuestions) -->
         <span class="totalLabel"><span id="totalValue">0</span><span class="max" id="totalMax"> / 0</span></span>
         <span class="vsep"></span>
         <div class="combo" id="feedbackCombo">
@@ -2308,7 +2311,8 @@ function renderQuestions() {
   // The question being created: a row in edit mode that no scheme holds yet.
   if (editingDraft) questionsEl.appendChild(buildQuestionBlock(editingDraft, true, true, true));
 
-  questionsEl.appendChild(totalBar);       // total + feedback: the list's last row
+  questionsEl.appendChild(totalBar);       // total + feedback: the list's last row...
+  totalBar.hidden = students.length === 0; // ...once there is a student to total
   questionsEl.appendChild(addQuestionBar); // the "+" sits at the bottom of the list
   // Always applies the current student — name, PDF position, feedback, grades and totals
   // (with an empty scheme, just the first three) — so selecting a student works before
@@ -2317,7 +2321,7 @@ function renderQuestions() {
   // The grading list is the keyboard's home: as soon as there is anything to grade at all,
   // the cursor starts on the first question, so Space and the digits work without an arrow
   // key first. Once only — Escape drops the cursor, and it must then stay dropped.
-  if (!kbCursor && !kbEntered && kbRows().length > 1) {
+  if (!kbCursor && !kbEntered && kbRows().some(row => row !== totalBar)) {
     kbCursor = { key: kbRowKey(kbRows()[0]), at: 0 };
     kbEntered = true;
   }
@@ -2548,11 +2552,12 @@ const KB_PDF_SCROLL = 100;
 // the arrows exactly — up and down walk the questions, left and right the students.
 const HOME_KEY = { h: "ArrowLeft", j: "ArrowDown", k: "ArrowUp", l: "ArrowRight" };
 
-// The rows the cursor can be on, top to bottom: the grading rows, then the total bar. A row
-// open for editing is not one of them — it shows the question's definition and owns Enter and
-// Escape itself — and neither are the group separators or the "+" bar.
+// The rows the cursor can be on, top to bottom: the grading rows, then the total bar while it
+// shows (it waits for a student). A row open for editing is not one of them — it shows the
+// question's definition and owns Enter and Escape itself — and neither are the group
+// separators or the "+" bar.
 function kbRows() {
-  return Array.from(questionsEl.children).filter(el => el === totalBar
+  return Array.from(questionsEl.children).filter(el => (el === totalBar && !el.hidden)
     || (el.classList.contains("question") && !el.classList.contains("editing")));
 }
 
