@@ -1480,6 +1480,15 @@ function phraseBox(input, store) {
   input._comboItemClass = text => (use(text).here ? "here" : "");
   input._comboClickToggles = true;
   input._phraseStore = store;
+  // While a phrase is typed, the list opens on its top suggestion when that one starts with
+  // what was typed — the one whose ending is written in (see showCompletion) — so Enter takes
+  // it from either. One that merely holds it further in is not highlighted: Enter then keeps
+  // the new phrase. Nor after a deletion, which offers nothing back.
+  input._comboStartIndex = items => {
+    const typed = foldPhrase(currentSegment(input));
+    if (!typed || input._deleting || !items.length) return -1;
+    return foldPhrase(items[0]).startsWith(typed) ? 0 : -1;
+  };
   // Enter takes the suggested ending — unless a row of the list is highlighted, which Enter
   // picks instead (see the keydown handler). Escape drops the ending; when the list is open,
   // the same press folds it too.
@@ -1552,7 +1561,6 @@ function acceptCompletion(input) {
   input._completion = null;
   pickPhrase(input, c.text);
   closeCombo();
-  input.setSelectionRange(input.value.length, input.value.length);
   if (input._phraseStore) input._phraseStore();
   return true;
 }
@@ -1579,6 +1587,10 @@ function pickPhrase(input, val) {
   const at = segmentStart(input), typed = typedValue(input);
   input._completion = null;
   input.value = joinPhrase(currentSegment(input) ? typed.slice(0, at) : typed, val);
+  // The caret after it. A pick of the suggestion already written in (see showCompletion) can
+  // leave the value as it was — and then the browser keeps the old selection, so the ending
+  // would stay selected and the next key would wipe it.
+  input.setSelectionRange(input.value.length, input.value.length);
   input._typed = false;                  // what follows the pick is a new phrase
   input._base = input.value;
 }
@@ -2052,8 +2064,20 @@ function buildScoreBox(q, key) {
   // the grid at once, as Enter on a typed score does. A comment keeps the box after a pick,
   // since more is often typed after a suggestion; a score never has anything to add.
   box._comboSelect = (v) => { box.value = v === CLEAR_SCORE ? "" : v; kbLeaveCell(true, box); };
+  // The list opens on a row Enter can take at once: the grade already given when it is one of
+  // the list's, else on an ungraded row the first score ("—" would clear a grade there is not).
+  // A grade the list has not got (a key's) highlights nothing, so Enter leaves it as it is.
+  box._comboStartIndex = items => {
+    if (box.value) return items.indexOf(box.value);
+    return items.length > 1 ? 1 : -1;
+  };
   box.addEventListener("change", () => onScoreBoxChange(box));
   box.addEventListener("focus", () => openCombo(box));
+  // A number typed in is the grade wanted: the highlight goes, so Enter takes what was typed.
+  // (Tab or the down arrow walk the list again from its first row.)
+  box.addEventListener("input", () => {
+    if (activeComboInput === box) { comboIndex = -1; paintComboCursor(); }
+  });
   // Just wide enough for the widest score it may have to show — which is any of them, since
   // a key fills it too — plus its own side padding (the box is border-box like everything).
   box.style.width = "calc(" + Math.max(2, ...texts.map(t => t.length)) + "ch + 18px)";
@@ -2572,9 +2596,12 @@ function openCombo(input) {
   // Keep the row that matters in view (a student just moved past the visible edge).
   const current = comboPopup.querySelector(".combo-item.current");
   if (current) current.scrollIntoView({ block: "nearest" });
-  // The keyboard starts on the row that matters — the student already selected, say. Every
-  // redraw comes back through here, so a list narrowed by typing never keeps a stale row.
+  // The keyboard starts on the row that matters — the student already selected, say, or the
+  // row the box offers first (_comboStartIndex: the score box's first score, a phrase box's top
+  // suggestion), so Enter takes it without a Tab first. Every redraw comes back through here,
+  // so a list narrowed by typing never keeps a stale row.
   comboIndex = comboNavRows().indexOf(comboPopup.querySelector(".combo-item.current"));
+  if (comboIndex < 0 && input._comboStartIndex) comboIndex = input._comboStartIndex(items);
   paintComboCursor();
 }
 
@@ -2620,9 +2647,10 @@ function closeCombo() {
 }
 
 // A suggestion list follows its box as it is typed in. The phrase being typed (after the last
-// ";") narrows it, and unfolds it when something matches; once nothing does, it folds. No row
-// is highlighted, so Enter still means "this comment is done". Between two phrases (just after
-// a ";") an open list shows everything and a folded one stays folded. The box itself is never
+// ";") narrows it, and unfolds it when something matches; once nothing does, it folds. Only a
+// suggestion that starts with the phrase is highlighted (see phraseBox), so Enter on a new
+// phrase still means "this comment is done". Between two phrases (just after a ";") an open
+// list shows everything and a folded one stays folded. The box itself is never
 // touched, so the caret and any selection stay where they are. An event marked _quiet (see
 // kbOpenComment) is the app's own and unfolds nothing. Text only counts as being typed from the
 // moment it is typed (see currentSegment): taking the keys starts afresh.
@@ -2632,10 +2660,11 @@ function redrawComboOnInput(input) {
     if (e._quiet) return;
     input._typed = true;
     input._completion = null;                 // whatever was on offer has been typed over
+    // A deletion offers nothing back: Backspace takes the ending away, then the letters.
+    input._deleting = String(e.inputType || "").startsWith("delete");
     const open = activeComboInput === input && comboPopup.classList.contains("open");
     if (open || currentSegment(input)) openCombo(input);   // openCombo folds an empty list
-    // A deletion offers nothing back: Backspace takes the ending away, then the letters.
-    if (!String(e.inputType || "").startsWith("delete")) showCompletion(input);
+    if (!input._deleting) showCompletion(input);
   });
 }
 
@@ -5640,7 +5669,8 @@ document.addEventListener("keydown", e => {
     const el = document.activeElement;
     if (typing && el._comboItems) {
       openCombo(el);
-      // The student picker opens on the current student, which keeps the highlight.
+      // A list that opens on a row of its own (the current student, the first score, the top
+      // suggestion) keeps it.
       if (comboIndex < 0) moveComboCursor(e.shiftKey ? -1 : 1);
       e.preventDefault();
       return;
@@ -5681,7 +5711,7 @@ document.addEventListener("keydown", e => {
     else if (e.key === "ArrowDown") {
       // Unfold *and* land on the first suggestion in the one press: a list is only ever
       // unfolded in order to pick from it. The guard is for a list that opens on a row of
-      // its own (the student picker opens on the current student) — that row keeps it.
+      // its own (the current student, the first score, the top suggestion) — that row keeps it.
       openCombo(document.activeElement);
       if (comboIndex < 0) moveComboCursor(1);
       e.preventDefault();
