@@ -434,8 +434,8 @@
   .combo-label, .combo-note, .combo-score, .combo-tag { position: relative; } /* above the fill */
   .combo-label { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
   .combo-item.current { font-weight: 700; scroll-margin-top: 32px; } /* clear the sticky toolbar */
-  /* A phrase already written on this same question (see suggestions): a small dot, so it shows
-     where the question's own phrases end and the rest of the list begins. */
+  /* A phrase already written on this same question, in this group (see suggestions): a small
+     dot, so it shows where the question's own phrases end and the rest of the list begins. */
   .combo-item.here .combo-label::before {
     content: ""; display: inline-block; width: 6px; height: 6px; margin: 0 6px 1px 0;
     border-radius: 50%; background: var(--accent); vertical-align: middle;
@@ -1391,30 +1391,36 @@ function foldPhrase(s) {
                   .trim().toLowerCase();
 }
 
-// How often each phrase is used, as a Map of { n, here }: in the comments for a comment box, in
-// the feedbacks for the feedback box. `n` counts every use, `here` only the uses on this same
-// question in the other copies (a feedback has no question: always 0). The box's own cell is
-// left out — the feedback stores on every keystroke, and a half-typed word would otherwise be
-// offered back as a suggestion of itself.
+// How often each phrase is used, as a Map of { n, here, near }: in the comments for a comment
+// box, in the feedbacks for the feedback box. `n` counts every use; `near` only the uses on this
+// same question in the other copies, and `here` only those of them in this student's group (one
+// subject's answers are not another's). The students with no group are a group of their own —
+// so with no groups at all, `here` and `near` are one and the same. A feedback has no question:
+// both always 0. The box's own cell is left out — the feedback stores on every keystroke, and a
+// half-typed word would otherwise be offered back as a suggestion of itself.
 function phraseCounts(input) {
   const counts = new Map();
-  const add = (text, here) => {
+  const add = (text, near, here) => {
     for (const p of splitPhrases(text)) {
-      const c = counts.get(p) || { n: 0, here: 0 };
+      const c = counts.get(p) || { n: 0, here: 0, near: 0 };
       c.n++;
+      if (near) c.near++;
       if (here) c.here++;
       counts.set(p, c);
     }
   };
   const own = input.dataset.key;
+  const group = name => groupByStudent[name] || "";
   for (const name of students) {
     if (input === globalFeedback) {
-      if (name !== currentStudent) add(feedbackByStudent[name], false);
+      if (name !== currentStudent) add(feedbackByStudent[name], false, false);
       continue;
     }
     const comments = commentsByStudent[name] || {};
+    const sameGroup = group(name) === group(currentStudent);
     for (const key in comments)
-      if (!(name === currentStudent && key === own)) add(comments[key], key === own);
+      if (!(name === currentStudent && key === own))
+        add(comments[key], key === own, key === own && sameGroup);
   }
   return counts;
 }
@@ -1436,10 +1442,11 @@ function currentSegment(input) {
   return typedValue(input).slice(segmentStart(input)).trim();
 }
 
-// The list a box offers, as [{ text, n, here }]: every phrase it has not got already, narrowed
-// to the ones holding what is being typed. Those that start with it come first and those that
-// hold it further in after. Within each, the phrases already written on this question lead,
-// most used here first; then the rest, most used anywhere first.
+// The list a box offers, as [{ text, n, here, near }]: every phrase it has not got already,
+// narrowed to the ones holding what is being typed. Those that start with it come first and
+// those that hold it further in after. Within each, the phrases already written on this
+// question in this group lead, most used there first; then the ones written on this question in
+// another group; then the rest, most used anywhere first.
 function suggestions(input) {
   const value = typedValue(input), at = segmentStart(input);
   const typed = foldPhrase(value.slice(at));
@@ -1448,15 +1455,17 @@ function suggestions(input) {
   for (const [text, c] of phraseCounts(input)) {
     if (taken.has(text)) continue;
     const f = foldPhrase(text);
-    if (f.startsWith(typed)) start.push({ text, n: c.n, here: c.here });
-    else if (f.indexOf(typed) >= 0) within.push({ text, n: c.n, here: c.here });
+    const item = { text, n: c.n, here: c.here, near: c.near };
+    if (f.startsWith(typed)) start.push(item);
+    else if (f.indexOf(typed) >= 0) within.push(item);
   }
-  const byUse = (a, b) => b.here - a.here || b.n - a.n || a.text.localeCompare(b.text);
+  const byUse = (a, b) => b.here - a.here || b.near - a.near || b.n - a.n
+                          || a.text.localeCompare(b.text);
   return start.sort(byUse).concat(within.sort(byUse));
 }
 
 // A box with a suggestion list of its own: the plain rows of openCombo, each with its count,
-// and a dot on the ones already written on this question. `store` keeps what the box says
+// and a dot on the ones already written on this question in this group. `store` keeps what the box says
 // (the comment, or the feedback). A click unfolds the list and a second one folds it; typing
 // unfolds it too, and writes the top suggestion's ending in ahead of the caret (see
 // showCompletion).
@@ -1466,7 +1475,7 @@ function phraseBox(input, store) {
     input._phraseUses = new Map(list.map(p => [p.text, p]));
     return list.map(p => p.text);
   };
-  const use = text => input._phraseUses.get(text) || { n: 0, here: 0 };
+  const use = text => input._phraseUses.get(text) || { n: 0, here: 0, near: 0 };
   input._comboItemScore = text => "×" + use(text).n;
   input._comboItemClass = text => (use(text).here ? "here" : "");
   input._comboClickToggles = true;

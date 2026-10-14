@@ -59,6 +59,7 @@ Les sauvegardes sont des fichiers ODS manuellement lisibles, et modifiables avec
 8. Noter les copies en faisant des sauvegardes régulières (Ctrl + S). Il est préférable de désactiver l'ouverture automatique des fichiers téléchargés.
 
    * La correction peut se faire de façon transversale en traitant toutes les copies successivement, pour chaque question ou petit groupe de questions dépendantes.
+   * Les commentaires suggérés proposent d'abord ceux déjà écrits sur cette question pour les étudiants du même groupe (point bleu), puis ceux des autres groupes, puis les autres.
    * En cas de correction transversale, penser à enclencher la feuille avec un point rouge, pour garder en mémoire la position précise du défilement dans le PDF pour chaque étudiant.
    * Si vous corrigez à la souris, vous pouvez sauter à l'étudiant suivant avec le clic molette, ce qui permet de corriger des questions simples en bougeant très peu la main.
    * Pour éviter d'alterner fréquemment entre clavier et souris, vous pouvez aussi corriger exclusivement au clavier. (Voir raccourcis plus bas). Les raccourcis types VIM (h/j/k/l au lieu des flèches) permettent de garder les mains centrées sur le clavier et de réduire les mouvements.
