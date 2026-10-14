@@ -1161,22 +1161,28 @@
   </div>
 </div>
 
+<!-- The libraries come from a CDN. To work offline, save the page with the browser ("Save page",
+     complete web page): every file below is saved next to it, and the saved page points there. -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<!-- SheetJS (CDN), used to read/write the .ods save format. The "full" build is
-     required (it bundles the ODS codecs; the "mini" build does not). To run fully
-     offline, replace this URL with a local copy of xlsx.full.min.js. -->
+<!-- pdf.js's worker, which pdf.js loads itself (see the setup below). Never run here — the type
+     is not JavaScript, so the browser neither fetches nor runs it — but a tag the page names it
+     in, so that saving the page saves the worker too and rewrites this src to the saved copy. -->
+<script type="text/plain" id="pdfWorkerScript"
+        src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
+<!-- SheetJS, used to read/write the .ods save format. The "full" build is required (it bundles
+     the ODS codecs; the "mini" build does not). -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<!-- pdf-lib (CDN), used to write the PDF back with rotated pages (pdf.js only reads).
-     To run fully offline, replace this URL with a local copy of pdf-lib.min.js. -->
+<!-- pdf-lib, used to write the PDF back with rotated pages (pdf.js only reads). -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script>
 "use strict";
 
-// ---- PDF.js setup (CDN). To run fully offline, replace these two URLs with
-// local copies of pdf.min.js (script tag above) and pdf.worker.min.js. ----
-const PDF_WORKER_SRC = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+// ---- PDF.js setup ----
+// The worker is wherever its tag says (#pdfWorkerScript): the CDN, or the copy a saved page keeps
+// beside it. `.src` is the whole address either way. From a saved file some browsers will not
+// start a worker at all; pdf.js then loads the same file as a script and parses on the page.
 if (window.pdfjsLib) {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = PDF_WORKER_SRC;
+  pdfjsLib.GlobalWorkerOptions.workerSrc = document.getElementById("pdfWorkerScript").src;
 }
 
 // ---- App state ----
@@ -3668,7 +3674,8 @@ let pageRotation = {};      // { original 1-based page: extra clockwise degrees 
 
 async function renderPdf(arrayBuffer, name) {
   if (!window.pdfjsLib) {
-    alert("PDF library failed to load. Check your internet connection (PDF.js is loaded from a CDN).");
+    alert("PDF library failed to load. Check your internet connection (PDF.js is loaded from a CDN, " +
+          "or from the files saved with the page).");
     return;
   }
   // Keep a copy for saving: pdf.js transfers (detaches) the buffer it is given.
