@@ -5255,15 +5255,17 @@ function openGroupComment(key) {
   const groups = studentGroups();
   const rows = groups.map(g => ({ group: g, label: g }));
   if (students.some(n => !groupByStudent[n]))
-    rows.push({ group: "", label: groups.length ? "\u2014" : "All students" });
+    rows.push({ group: "", label: groups.length ? "\u2014" : "" });   // no groups: no name to show
   gcRows.replaceChildren();
   for (const row of rows) {
     const n = groupCommentStudents(key, row.group).length;
     if (n === 0) continue;      // nobody there has this question
     const name = document.createElement("span");
     name.className = "gcGroup";
-    name.innerHTML = groupIcon();
-    name.appendChild(document.createTextNode(row.label));   // a name is text, never markup
+    if (row.label) {
+      name.innerHTML = groupIcon();
+      name.appendChild(document.createTextNode(row.label));   // a name is text, never markup
+    }
     const count = document.createElement("span");
     count.className = "gcCount";
     count.title = "Students of this group at this question";
@@ -5274,7 +5276,8 @@ function openGroupComment(key) {
     input.className = "gcText";
     input.autocomplete = "off";
     input.dataset.group = row.group;
-    input.setAttribute("aria-label", "Comment for " + row.label);
+    input.title = "Comment for " + (row.label || "all students");
+    input.setAttribute("aria-label", input.title);
     input.addEventListener("input", paintGroupComment);
     gcRows.append(name, count, input);
   }
