@@ -39,6 +39,7 @@
 
   /* ---- Left: PDF pane ---- */
   #left {
+    container: pdfpane / inline-size;   /* see "Smaller screens" */
     width: 50%;
     flex: 0 0 auto;
     display: flex;
@@ -103,6 +104,7 @@
 
   /* ---- Right: grading pane ---- */
   #right {
+    container: gradepane / inline-size;
     flex: 1 1 0;
     min-width: 0;
     display: flex;
@@ -804,6 +806,45 @@
     border-radius: 6px;
     background: #fff;
     color: var(--text);
+  }
+  /* ---- Smaller screens ----
+     Each pane adapts to its own width — the window's, and wherever the divider leaves it — so
+     these are container queries, not media queries. Narrow, a pane tightens: the bars wrap
+     instead of running off their ends, paddings shrink, the keys narrow. Narrower still, the
+     grading list also zooms out a little by itself (see applyGradeZoom). */
+  @container pdfpane (max-width: 780px) {
+    #pdfBar { flex-wrap: wrap; row-gap: 6px; padding: 6px 8px; }
+    #btnAssignment, #btnSavePdf { padding-left: 12px; padding-right: 12px; }
+    #pdfBar .vsep { margin: 0 2px; }
+    #onlyPdfLabel { margin-left: 4px; }
+    #pdfPane { padding: 8px; }
+  }
+  @container gradepane (max-width: 640px) {
+    #toolbar { padding: 8px 10px; gap: 6px; }
+    #toolbar button { flex-basis: 64px; }
+    #studentBar { padding: 8px 10px; gap: 6px; }
+    #studentBar > label { display: none; }    /* the person icon: the name needs the room more */
+    #questions { padding: 4px 8px; }
+    #totalBar { margin: 8px -8px 0; padding: 10px 8px; gap: 8px; }
+    .question { gap: 6px 8px; }
+    .question .vsep { display: none; }        /* a wrapped row would leave one dangling */
+    .opt { min-width: 40px; padding: 6px 10px; }
+    .question .combo:not(.qscore-combo) { flex-basis: 160px; }
+  }
+  /* A short screen (a 768px-tall laptop): the bars give their height back to the rows. */
+  @media (max-height: 820px) {
+    #pdfBar { padding-top: 6px; padding-bottom: 6px; }
+    #toolbar { padding-top: 8px; padding-bottom: 8px; }
+    #studentBar { padding-top: 8px; padding-bottom: 8px; }
+    #totalBar { padding-top: 8px; padding-bottom: 8px; }
+  }
+  /* A finger (a tablet): bigger targets, and a divider that drags instead of scrolling. */
+  @media (pointer: coarse) {
+    .qmore, .qedit, .qcapture, .qshots, .qgroupc, .forall-toggle { width: 40px; height: 36px; }
+    .qremove { min-width: 40px; min-height: 36px; }
+    .nav-stack button.nav { height: 22px; width: 32px; }
+    .combo-item { padding-top: 10px; padding-bottom: 10px; }
+    #progress { flex-basis: 28px; touch-action: none; }
   }
 </style>
 </head>
@@ -2733,7 +2774,7 @@ function positionCombo() {
   // The popup is fixed at the end of the body, outside #questions, so the grading zoom never
   // reaches it: its text would stay full size inside a box measured at the zoomed width, and
   // be clipped. Zoom it by the same factor, so it shrinks with the row that opened it.
-  const z = questionsEl.contains(activeComboInput) ? gradeZoom : 1;
+  const z = questionsEl.contains(activeComboInput) ? effectiveGradeZoom() : 1;
   comboPopup.style.zoom = z === 1 ? "" : z;
   // The rectangle below is in screen pixels; `zoom: z` multiplies back whatever we set here.
   const px = (v) => (v / z) + "px";
@@ -3318,11 +3359,26 @@ function removeStudent() {
   return true;
 }
 
-// Zoom the grading panel in/out (CSS zoom on the questions container).
+// Zoom the grading panel in/out (CSS zoom on the questions container). `gradeZoom` is the
+// teacher's (the +/- buttons); a narrow pane adds its own on top (autoGradeZoom), so that
+// below GRADE_FIT_WIDTH the rows shrink a little rather than only wrap — never below
+// GRADE_FIT_MIN. The layout tightens first (see "Smaller screens" in the styles).
 let gradeZoom = 1.0;
+const GRADE_FIT_WIDTH = 480, GRADE_FIT_MIN = 0.75;
+function autoGradeZoom() {
+  const w = document.getElementById("right").clientWidth;
+  if (!w) return 1;                       // not laid out (hidden, or no layout at all)
+  return Math.min(1, Math.max(GRADE_FIT_MIN, w / GRADE_FIT_WIDTH));
+}
+function effectiveGradeZoom() {
+  return gradeZoom * autoGradeZoom();
+}
+function applyGradeZoom() {
+  questionsEl.style.zoom = effectiveGradeZoom();
+}
 function zoomGrade(factor) {
   gradeZoom = Math.min(2, Math.max(0.5, gradeZoom * factor));
-  questionsEl.style.zoom = gradeZoom;
+  applyGradeZoom();
 }
 
 // Read an .ods save file, collect its sheets by name (as arrays of rows),
@@ -5841,6 +5897,12 @@ const endDrag = e => {
 };
 divider.addEventListener("pointerup", endDrag);
 divider.addEventListener("pointercancel", endDrag);
+
+// The grading pane's width sets part of its zoom (see autoGradeZoom): follow it, whether the
+// window or the divider moved it.
+if (window.ResizeObserver) new ResizeObserver(applyGradeZoom).observe(document.getElementById("right"));
+else window.addEventListener("resize", applyGradeZoom);
+applyGradeZoom();
 
 // No button in this app takes the keyboard from a mouse press. Otherwise the last one
 // clicked keeps it, and the next Enter or Space presses it again — the file dialog opening
