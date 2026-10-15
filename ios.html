@@ -173,7 +173,7 @@
      outrank .combo:focus-within, so the status bar survives while the box is being typed in. */
   #studentCombo.graded   { border-left-color: var(--graded);   background: var(--graded-bg); }
   #studentCombo.ungraded { border-left-color: var(--ungraded); background: var(--ungraded-bg); }
-  #studentCombo .qcomment, #studentCombo .combo-arrow { position: relative; }  /* above the fill */
+  #studentCombo .qcomment { position: relative; }  /* above the fill */
   /* The box only shows the student: it is never typed in (see beginStudentEdit), and a press
      anywhere on it unfolds the list. */
   #studentSelect { cursor: pointer; text-overflow: ellipsis; }
@@ -846,6 +846,34 @@
     .combo-item { padding-top: 10px; padding-bottom: 10px; }
     #progress { flex-basis: 28px; touch-action: none; }
   }
+  /* ---- Folding the two top bars ----
+     Each bar ends with a ⌃ that folds it into a thin strip across its pane; the strip, a ⌄,
+     unfolds it again (see setBarFolded). Neither is ever remembered: a visit starts unfolded.
+     The ID rules are spelled out where #toolbar's own button rules would otherwise win. */
+  #pdfBar.folded, #toolbar.folded { display: none; }
+  .barFold, #toolbar .barFold {
+    flex: 0 0 auto; align-self: center;
+    display: flex; align-items: center; justify-content: center;
+    width: 26px; height: 24px; padding: 0;
+    border: 1px solid transparent; border-radius: 6px;
+    background: transparent; color: var(--muted);
+  }
+  .barFold:hover, #toolbar .barFold:hover { color: var(--accent); border-color: #c7d7f5; background: #f0f5ff; }
+  .barFold svg, #toolbar .barFold svg { width: 15px; height: 15px; }
+  .barStrip {
+    flex: 0 0 auto;
+    display: flex; align-items: center; justify-content: center;
+    width: 100%; height: 10px; padding: 0;
+    border: 0; border-bottom: 1px solid var(--border); border-radius: 0;
+    background: var(--panel); color: var(--muted); cursor: pointer;
+  }
+  .barStrip[hidden] { display: none; }
+  .barStrip:hover { background: #f0f5ff; color: var(--accent); }
+  .barStrip svg { width: 14px; height: 10px; }
+  @media (pointer: coarse) {
+    .barStrip { height: 18px; }
+    .barFold, #toolbar .barFold { width: 40px; height: 36px; }
+  }
 </style>
 </head>
 <body>
@@ -933,7 +961,18 @@
             d="M18.8 11V9.5C18.8 8.1 17.4 7 16 7s-2.8 1.1-2.8 2.5V11c-.6 0-1.2.6-1.2 1.2v3.5c0 .7.6 1.3 1.2 1.3h5.5c.7 0 1.3-.6 1.3-1.2v-3.5c0-.7-.6-1.3-1.2-1.3m-1.3 0h-3V9.5c0-.8.7-1.3 1.5-1.3s1.5.5 1.5 1.3zM9 6h3L8 2L4 6h3v12H4l4 4l4-4H9z" />
         </svg>
       </label>
+      <button type="button" class="barFold" data-bar="pdf" tabindex="-1" title="Hide this bar"
+              aria-label="Hide the PDF bar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg>
+      </button>
     </div>
+    <!-- The bar folded: a thin strip, which a click unfolds again (see setBarFolded). -->
+    <button type="button" class="barStrip" id="pdfBarStrip" data-bar="pdf" tabindex="-1"
+            title="Show the PDF bar" aria-label="Show the PDF bar" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+    </button>
     <div id="pdfPane">
       <!-- <div id="pdfEmpty">No assignment loaded.<br>Click "Open PDF" to open a PDF.</div> -->
     </div>
@@ -985,20 +1024,23 @@
           <button id="btnGradeZoomOut" class="nav" title="Zoom out grading">&#8722;</button>
         </span>
       </span>
+      <button type="button" class="barFold" data-bar="tools" tabindex="-1" title="Hide this bar"
+              aria-label="Hide the toolbar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg>
+      </button>
     </div>
+    <!-- The bar folded: a thin strip, which a click unfolds again (see setBarFolded). -->
+    <button type="button" class="barStrip" id="toolbarStrip" data-bar="tools" tabindex="-1"
+            title="Show the toolbar" aria-label="Show the toolbar" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+    </button>
     <div id="studentBar">
       <div class="nav-stack">
         <button id="btnPrev" class="nav" title="Previous student">&#9650;</button>
         <button id="btnNext" class="nav" title="Next student">&#9660;</button>
       </div>
-      <button type="button" id="btnSetPosition" class="nav" aria-label="Set page">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-          <polyline points="14 2 14 8 20 8"/>
-          <circle class="rec-dot" cx="12" cy="15" r="3.2"/>
-        </svg>
-      </button>
       <label for="studentSelect" aria-label="Student">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -1013,7 +1055,6 @@
         <span id="studentGroupTag" class="combo-tag" title="Student's group"></span>
         <span id="studentPageTag" class="combo-tag"></span>
         <span id="studentScoreTag" class="combo-tag" title="Score over the questions graded so far"></span>
-        <button type="button" id="studentArrow" class="combo-arrow" tabindex="-1">&#9662;</button>
       </div>
       <!-- The bar in edit mode (see beginStudentEdit): the student's name, page and group. -->
       <div id="studentEdit">
@@ -1044,6 +1085,14 @@
         </div>
         <button type="button" id="seRemove" class="qremove" title="Remove this student">&#10005;</button>
       </div>
+      <button type="button" id="btnSetPosition" class="nav" aria-label="Set page">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <circle class="rec-dot" cx="12" cy="15" r="3.2"/>
+        </svg>
+      </button>
       <button type="button" id="btnStudentEdit" class="qedit" title="Edit this student"
               aria-label="Edit this student" disabled></button>
     </div>
@@ -1343,7 +1392,6 @@ const btnPageUp     = document.getElementById("btnPageUp");
 const btnPageDown   = document.getElementById("btnPageDown");
 const questionsEl   = document.getElementById("questions");
 const studentSelect = document.getElementById("studentSelect");
-const studentArrow  = document.getElementById("studentArrow");
 const studentCombo  = document.getElementById("studentCombo");
 const studentFill   = document.getElementById("studentFill");
 const progressEl    = document.getElementById("progress");
@@ -5466,7 +5514,7 @@ studentSelect._comboItemTag = studentPageTag;   // each student's page, or a cro
 btnSetPosition.addEventListener("click", onSetPositionClick);
 studentSelect._comboItemFill = studentFraction;                       // background = grading progress
 studentSelect._comboFooter = buildStudentFooter;                      // "+": a new student
-// A press anywhere on the box (its arrow included) unfolds or folds the list, and never takes
+// A press anywhere on the box unfolds or folds the list, and never takes
 // the keyboard: an open list is walked from wherever the keys are (see the keydown handler).
 studentSelect._comboArrowOnly = true;    // the document's click handler must not reopen it
 studentCombo.addEventListener("mousedown", e => {
@@ -5867,6 +5915,20 @@ window.addEventListener("wheel", e => {
   pdfPane.scrollTop += e.deltaY;
   e.preventDefault();
 }, { passive: false });
+
+// Fold a top bar ("pdf" or "tools") into its strip, or unfold it. A popup would be left pointing
+// at a box that just moved, so any is folded first. Nothing is stored: every visit starts unfolded.
+function setBarFolded(bar, folded) {
+  const el = document.getElementById(bar === "pdf" ? "pdfBar" : "toolbar");
+  const strip = document.getElementById(bar === "pdf" ? "pdfBarStrip" : "toolbarStrip");
+  closeCombo();
+  el.classList.toggle("folded", folded);
+  strip.hidden = !folded;
+}
+document.addEventListener("click", e => {
+  const btn = e.target.closest && e.target.closest(".barFold, .barStrip");
+  if (btn) setBarFolded(btn.dataset.bar, btn.classList.contains("barFold"));
+});
 
 // Drag the divider to reallocate horizontal space between the PDF and grading panes.
 // Pointer capture keeps the drag tracking even when the cursor is over the PDF canvas.
