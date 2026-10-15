@@ -625,7 +625,7 @@
      toggles: flat while off, pushed in while on, like a score key. The pencil is an action
      instead: it opens the editing, and while open it is a tick (.on) that applies it — flat
      like the ✕ beside it, and green under the pointer where the ✕ is red. */
-  .qedit, .forall-toggle, .qcapture, .qshots, .qgroupc {
+  .qedit, .forall-toggle, .qcapture, .qshots, .qgroupc, .qmore {
     flex: 0 0 auto;
     align-self: center;
     display: flex; align-items: center; justify-content: center;
@@ -638,8 +638,8 @@
   }
   .qedit svg { width: 15px; height: 15px; }
   .forall-toggle svg { width: 17px; height: 17px; }
-  .qcapture svg, .qshots svg, .qgroupc svg { width: 16px; height: 16px; }
-  .qedit:hover, .forall-toggle:hover, .qcapture:hover, .qshots:hover, .qgroupc:hover {
+  .qcapture svg, .qshots svg, .qgroupc svg, .qmore svg { width: 16px; height: 16px; }
+  .qedit:hover, .forall-toggle:hover, .qcapture:hover, .qshots:hover, .qgroupc:hover, .qmore:hover {
     color: var(--accent); border-color: #c7d7f5; background: #f0f5ff;
   }
   .qedit.on:hover { color: #15803d; border-color: #bfe3cc; background: #e7f6ec; }
@@ -649,6 +649,15 @@
     background: #e4edff;
     box-shadow: inset 0 2px 3px rgba(0,0,0,0.18);
   }
+  /* A grading row's rare buttons (edit, group comment, capture) wait behind its ⋯, which a
+     click swaps for them (see paintMore). */
+  .qmore-wrap { flex: 0 0 auto; align-self: center; display: flex; align-items: center; gap: 2px; }
+  /* A comment asks for a little less room before its row wraps, so the ⋯ after it stays on
+     the line in a row with five keys. */
+  .question .combo:not(.qscore-combo) { flex-basis: 200px; }
+  .qmore-wrap > :not(.qmore) { display: none; }
+  .question.more-open .qmore-wrap > :not(.qmore) { display: flex; }
+  .question.more-open .qmore { display: none; }
   /* The count rides on the picture icon, so the row's width barely changes. */
   .qshots { position: relative; }
   .qshots-n {
@@ -2264,13 +2273,12 @@ function buildQuestionBlock(q, disableUp, disableDown, isDraft) {
     combo.appendChild(comment);
     block.appendChild(combo);
 
-    block.appendChild(buildGroupCommentButton(key));
-    block.appendChild(buildCaptureButton(key));
     const shotsBtn = buildShotsButton(key);
     if (shotsBtn) block.appendChild(shotsBtn);
 
-    // Reordering and removing live in edit mode; grading rows stay uncluttered.
-    block.appendChild(buildEditToggle(key, false));
+    // The buttons seldom needed — edit (reordering and removing live in edit mode), the group
+    // comment, the capture — wait behind a ⋯, so grading rows stay uncluttered.
+    block.appendChild(buildMoreButtons(key));
 
     // Last, and full width: the thumbnails wrap onto their own line under the row.
     block.appendChild(buildShotsPanel(key));
@@ -2349,6 +2357,40 @@ function shotsFor(key) {
 }
 
 // The capture button. Always present, pressed in while it is the armed one.
+// The ⋯ of a grading row and the buttons it unfolds, in the order they show: edit, the group
+// comment, the capture. Which row is unfolded is paintMore's business.
+function buildMoreButtons(key) {
+  const wrap = document.createElement("span");
+  wrap.className = "qmore-wrap";
+  const more = document.createElement("button");
+  more.type = "button";
+  more.className = "qmore";
+  more.tabIndex = -1;
+  more.dataset.key = key;
+  more.title = "More";
+  more.setAttribute("aria-label", "More");
+  more.setAttribute("aria-expanded", "false");
+  more.appendChild(svgIcon('<circle cx="5" cy="12" r="1.3" fill="currentColor"/>' +
+                           '<circle cx="12" cy="12" r="1.3" fill="currentColor"/>' +
+                           '<circle cx="19" cy="12" r="1.3" fill="currentColor"/>'));
+  wrap.append(more, buildEditToggle(key, false), buildGroupCommentButton(key), buildCaptureButton(key));
+  return wrap;
+}
+
+// Unfold the row whose ⋯ was pressed — one at a time — and the row a capture is armed on, so its
+// pressed button stays in sight until the capture is taken or given up.
+let openMoreKey = null;
+function paintMore() {
+  const armed = capState ? capState.key : null;
+  questionsEl.querySelectorAll(".question[data-key]").forEach(row => {
+    const more = row.querySelector(".qmore");
+    if (!more) return;
+    const open = row.dataset.key === openMoreKey || row.dataset.key === armed;
+    row.classList.toggle("more-open", open);
+    more.setAttribute("aria-expanded", open ? "true" : "false");
+  });
+}
+
 // Opens the group comment for this question (see openGroupComment): the two bubbles of the
 // range feedback, which does the same for the feedback.
 function buildGroupCommentButton(key) {
@@ -2453,7 +2495,7 @@ function paintShots(key) {
   const next = buildShotsButton(key);
   if (old && next) old.replaceWith(next);
   else if (old) old.remove();
-  else if (next) row.insertBefore(next, row.querySelector(".qedit"));  // the pencil stays last
+  else if (next) row.insertBefore(next, row.querySelector(".qmore-wrap"));  // the ⋯ stays last
   const panel = row.querySelector(".qshots-panel");
   if (!panel) return;
   fillShotsPanel(panel, key);
@@ -2583,6 +2625,7 @@ function renderQuestions() {
     kbEntered = true;
   }
   paintKbCursor(false);   // the rows are new elements; the keyboard cursor is not one
+  paintMore();            // ...and so are their ⋯: an unfolded row stays unfolded
 }
 
 // Save a typed/selected comment for the current student (and so count its phrases).
@@ -4182,6 +4225,7 @@ function paintCaptureArmed() {
   questionsEl.querySelectorAll(".qcapture").forEach(b => {
     b.classList.toggle("on", b.dataset.key === key);
   });
+  paintMore();            // the armed row stays unfolded; once done, it folds
 }
 
 function toggleCaptureArm(key) {
@@ -5559,6 +5603,10 @@ questionsEl.addEventListener("dblclick", e => {
 // Edit, remove or reorder a question/group via its row buttons (delegated so it covers
 // re-renders). Remove and the arrows are only rendered on the row being edited.
 questionsEl.addEventListener("click", e => {
+  const more = e.target.closest(".qmore");
+  if (more) { openMoreKey = more.dataset.key; paintMore(); return; }
+  // Any of the buttons it unfolds folds it back once used (an armed capture keeps it open).
+  if (e.target.closest(".qmore-wrap")) { openMoreKey = null; paintMore(); }
   const cap = e.target.closest(".qcapture");
   if (cap) { toggleCaptureArm(cap.dataset.key); return; }
   const gc = e.target.closest(".qgroupc");
@@ -5687,6 +5735,14 @@ document.addEventListener("keydown", e => {
     return;
   }
   if (e.key === "Escape" && capState) { e.preventDefault(); cancelCapture(); }
+});
+// A press anywhere but on the unfolded buttons folds them back.
+document.addEventListener("pointerdown", e => {
+  if (openMoreKey === null) return;
+  const wrap = e.target.closest && e.target.closest(".qmore-wrap");
+  if (wrap && wrap.closest(".question").dataset.key === openMoreKey) return;
+  openMoreKey = null;
+  paintMore();
 });
 // Pressing anywhere but the PDF (or the button itself) gives up on an armed capture.
 document.addEventListener("pointerdown", e => {
