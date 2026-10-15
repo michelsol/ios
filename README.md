@@ -23,7 +23,7 @@ L'interface s'ouvre avec un lot de copies déjà chargé, prêt à corriger. Rie
 * Gain de temps ou de qualité de correction possible pour les grands contrôles
 * Informatisation de toutes les copies => triche ultérieure impossible, post-traitement informatisé des copies possible.
 
-### Inconvénients 
+### Inconvénients
 
 * Temps de préparation et de finalisation non négligeables => peu rentable pour petits contrôles.
 * Commentaires non précisément localisés (Cependant, il existe un bouton pour annoter au stylo rouge, des captures d'écran rectangulaires)
@@ -56,7 +56,7 @@ Les sauvegardes sont des fichiers ODS manuellement lisibles, et modifiables avec
 
 ### Notation
 
-8. Noter les copies en faisant des sauvegardes régulières (Ctrl + S). Il est préférable de désactiver l'ouverture automatique des fichiers téléchargés.
+1. Noter les copies en faisant des sauvegardes régulières (Ctrl + S). Il est préférable de désactiver l'ouverture automatique des fichiers téléchargés.
 
    * La correction peut se faire de façon transversale en traitant toutes les copies successivement, pour chaque question ou petit groupe de questions dépendantes.
    * En cas de correction transversale, penser à enclencher la feuille avec un point rouge, pour garder en mémoire la position précise du défilement dans le PDF pour chaque étudiant.
@@ -65,19 +65,22 @@ Les sauvegardes sont des fichiers ODS manuellement lisibles, et modifiables avec
 
 ### Finalisation (\~ 10 min)
 
-9. Trier les étudiants par page (dans la toolbar de la liste des étudiants), pour les remettre dans le même ordre que le lot initialement scanné.
-10. Appuyer sur l'icone d'impression en haut à droite pour exporter dans un format imprimable.
-11. Imprimer. Attention à retirer les entêtes éventuelles, préférer des marges étroites.
-12. Découper les résultats
-* Il faut être très vigilant à cette étape, on peut facilement mélanger les papiers et perdre l'ordre des copies.
-* Vérifier que vous avez bien fait l'étape 9, sinon il faut refaire 9,10,11
-* Découper d'abord dans le sens de la longueur (3 colonnes par défaut) en empilant toutes les feuilles
-* Prendre chaque colonne, de gauche à droite et découper chaque rectangle, puis placer les dans une pile à l'envers, pour obtenir le même ordre que les copies.
-* Il existe des coupes papiers très pratiques avec une lame coulissante, trouvable en ligne pour une dizaine d'euros.
-13. Agrafer les résultats sur les copies.
-* Pour accélérer cette phase, une petite agrafeuse qui tient dans la main est préférable, pour éviter de la reposer à chaque fois.
-* Pour des petits contrôles sur feuille recto/verso, une fois les élèves habitués, il peut être envisageable de ne pas agrafer et de rendre les papiers en même temps que les copies.
-14. Trier les étudiants par ordre alphabétique (dans la toolbar de la liste des étudiants), sauvegarder, ouvrir le ODS à la feuille "Total", puis copier coller dans Pronote ou autre logiciel. (Plus rapide à faire qu'à la main)
+1. Trier les étudiants par page (dans la toolbar de la liste des étudiants), pour les remettre dans le même ordre que le lot initialement scanné.
+2. Appuyer sur l'icone d'impression en haut à droite pour exporter dans un format imprimable.
+3. Imprimer. Attention à retirer les entêtes éventuelles, préférer des marges étroites.
+4. Découper les résultats
+
+   * Il faut être très vigilant à cette étape, on peut facilement mélanger les papiers et perdre l'ordre des copies.
+   * Découper d'abord dans le sens de la longueur (3 colonnes par défaut) en empilant toutes les feuilles
+   * Prendre chaque colonne, de gauche à droite et découper chaque rectangle, puis placer les dans une pile à l'envers, pour obtenir le même ordre que les copies.
+   * Il existe des coupes papiers très pratiques avec une lame coulissante, trouvable en ligne pour une dizaine d'euros.
+
+5. Agrafer les résultats sur les copies.
+
+   * Pour accélérer cette phase, une petite agrafeuse qui tient dans la main est préférable, pour éviter de la reposer à chaque fois.
+   * Pour des petits contrôles sur feuille recto/verso, une fois les élèves habitués, il peut être envisageable de ne pas agrafer et de rendre les papiers en même temps que les copies.
+
+6. Trier les étudiants par ordre alphabétique (dans la toolbar de la liste des étudiants), sauvegarder, ouvrir le ODS à la feuille "Total", puis copier coller dans Pronote ou autre logiciel. (Plus rapide à faire qu'à la main)
 
 ## Raccourcis clavier
 

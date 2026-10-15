@@ -604,8 +604,10 @@
     border-color: #b91c1c !important;
     outline: 1px solid #b91c1c;
   }
-  /* The edited row's two icon toggles: the pencil, and "applies to all students". Both are
-     raised while off and pushed in while on, like a score key. */
+  /* The row's icon buttons. "Applies to all students", the capture and the pictures are
+     toggles: flat while off, pushed in while on, like a score key. The pencil is an action
+     instead: it opens the editing, and while open it is a tick (.on) that applies it — flat
+     like the ✕ beside it, and green under the pointer where the ✕ is red. */
   .qedit, .forall-toggle, .qcapture, .qshots {
     flex: 0 0 auto;
     align-self: center;
@@ -623,7 +625,8 @@
   .qedit:hover, .forall-toggle:hover, .qcapture:hover, .qshots:hover {
     color: var(--accent); border-color: #c7d7f5; background: #f0f5ff;
   }
-  .qedit.on, .forall-toggle.on, .qcapture.on, .qshots.on {   /* pressed in, like a chosen score key */
+  .qedit.on:hover { color: #15803d; border-color: #bfe3cc; background: #e7f6ec; }
+  .forall-toggle.on, .qcapture.on, .qshots.on {   /* pressed in, like a chosen score key */
     color: var(--accent);
     border-color: var(--accent);
     background: #e4edff;
@@ -741,6 +744,8 @@
   }
   .zoomctl button:hover { background: #f0f2f5; }
   .zoomctl .lens { width: 16px; height: 16px; display: block; }
+  /* Wide enough for "100%", so stepping between 83% and 100% never shifts the bar. */
+  #pdfZoomLabel { min-width: 4ch; font-variant-numeric: tabular-nums; }
 
   /* ---- Shared controls ---- */
   button {
@@ -841,14 +846,17 @@
         </svg>
       </button>
       <span class="vsep"></span>
+      <!-- PDF zoom: stacked like the grading zoom, with the level beside it. -->
       <span class="zoomctl">
         <svg class="lens" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
         </svg>
-        <button id="btnPdfZoomOut" title="Zoom out PDF">&#8722;</button>
+        <span class="nav-stack">
+          <button id="btnPdfZoomIn" class="nav" title="Zoom in PDF">+</button>
+          <button id="btnPdfZoomOut" class="nav" title="Zoom out PDF">&#8722;</button>
+        </span>
         <span id="pdfZoomLabel">100%</span>
-        <button id="btnPdfZoomIn" title="Zoom in PDF">+</button>
       </span>
       <label id="onlyPdfLabel" title="Scroll PDF from anywhere">
         <input type="checkbox" id="onlyScrollPdf">
@@ -970,7 +978,7 @@
         <button type="button" id="seRemove" class="qremove" title="Remove this student">&#10005;</button>
       </div>
       <button type="button" id="btnStudentEdit" class="qedit" title="Edit this student"
-              aria-label="Edit this student" aria-pressed="false" disabled></button>
+              aria-label="Edit this student" disabled></button>
     </div>
     <div id="questions">
       <!-- <div id="questionsEmpty">No questions yet.<br>Click "Load" to open a file, or add a question below.</div> -->
@@ -2414,7 +2422,7 @@ function removeShot(key, i) {
   paintShots(key);
 }
 
-// The pencil toggle that opens a question for editing; while it is open, a tick that applies it.
+// The pencil that opens a question for editing; while it is open, a tick that applies it.
 function buildEditToggle(key, on) {
   const btn = document.createElement("button");
   btn.type = "button";
@@ -3552,8 +3560,8 @@ function paintStudentEdit() {
   const on = !!studentEdit;
   studentBarEl.classList.toggle("editing", on);
   btnStudentEdit.classList.toggle("on", on);
-  btnStudentEdit.setAttribute("aria-pressed", on ? "true" : "false");
   btnStudentEdit.title = on ? "Apply changes" : "Edit this student";
+  btnStudentEdit.setAttribute("aria-label", btnStudentEdit.title);
   btnStudentEdit.replaceChildren(on ? checkIcon() : editIcon());   // while editing, a press validates
   btnStudentEdit.disabled = !on && !currentStudent;
   for (const el of [seName, sePage, seGroup]) el.classList.remove("qedit-invalid");
