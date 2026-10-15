@@ -316,15 +316,15 @@
     background: rgba(37, 99, 235, 0.12);
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.6);
   }
-  /* The red-pen editor, the export options and the range feedback: three dialogs of the same
-     make, above #comboPopup (1000) so no suggestion list can hang over any of them. They are
-     never open at the same time. */
-  #annBack, #expBack, #rngBack {
+  /* The red-pen editor, the export options, the range feedback and the group comment: dialogs
+     of the same make, above #comboPopup (1000) so no suggestion list can hang over any of them.
+     They are never open at the same time. */
+  #annBack, #expBack, #rngBack, #gcBack {
     position: fixed; inset: 0; z-index: 1100; display: none;
     background: rgba(15, 23, 42, 0.55);
   }
-  #annBack.open, #expBack.open, #rngBack.open { display: block; }
-  #annBox, #expBox, #rngBox {
+  #annBack.open, #expBack.open, #rngBack.open, #gcBack.open { display: block; }
+  #annBox, #expBox, #rngBox, #gcBox {
     position: fixed; z-index: 1101; display: none;
     top: 50%; left: 50%; transform: translate(-50%, -50%);
     max-width: 94vw; max-height: 92vh;
@@ -335,7 +335,7 @@
     border-radius: 10px;
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
   }
-  #annBox.open, #expBox.open, #rngBox.open { display: flex; }
+  #annBox.open, #expBox.open, #rngBox.open, #gcBox.open { display: flex; }
   #annStage { position: relative; align-self: center; line-height: 0; background: #fff; }
   #annBase { display: block; max-width: 88vw; max-height: 74vh; }
   /* The ink layer covers the base exactly, at the same bitmap size but the displayed one,
@@ -344,9 +344,9 @@
     position: absolute; left: 0; top: 0; width: 100%; height: 100%;
     cursor: crosshair; touch-action: none;
   }
-  #annBar, #expBar, #rngBar { display: flex; align-items: center; gap: 8px; }
+  #annBar, #expBar, #rngBar, #gcBar { display: flex; align-items: center; gap: 8px; }
   #annBar button svg, .expact svg { display: block; width: 17px; height: 17px; }
-  #annGap, #expGap, #rngBar .gap { flex: 1 1 auto; }
+  #annGap, #expGap, #rngBar .gap, #gcBar .gap { flex: 1 1 auto; }
   #annPens { display: flex; align-items: center; gap: 4px; margin-right: 4px; }
   .annw, .expcol, .expcompact {
     width: 30px; height: 30px; padding: 0;
@@ -394,6 +394,23 @@
   }
   #rngTextRow { display: flex; align-items: center; gap: 8px; }
   #rngText { flex: 1 1 auto; min-width: 0; }
+  /* The group comment: the question, then a row per group — its name, how many students it
+     has at this question, and the comment they all get. */
+  #gcBox { min-width: 420px; }
+  #gcHead { display: flex; align-items: center; gap: 8px; font-weight: 700; }
+  #gcTitle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #gcRows { display: grid; grid-template-columns: auto auto 1fr; align-items: center; gap: 8px 10px; }
+  .gcGroup { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); white-space: nowrap; }
+  .gcGroup svg { width: 17px; height: 17px; flex: 0 0 auto; }
+  .gcCount {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text);
+  }
+  .gcCount svg { width: 16px; height: 16px; color: var(--muted); }
+  .gcText {
+    font: inherit; font-size: 15px; padding: 4px 6px; min-width: 0;
+    border: 1px solid var(--border); border-radius: 6px; background: #fff; color: var(--text);
+  }
   .combo-item {
     position: relative;                  /* carries .combo-fill */
     display: flex;
@@ -608,7 +625,7 @@
      toggles: flat while off, pushed in while on, like a score key. The pencil is an action
      instead: it opens the editing, and while open it is a tick (.on) that applies it — flat
      like the ✕ beside it, and green under the pointer where the ✕ is red. */
-  .qedit, .forall-toggle, .qcapture, .qshots {
+  .qedit, .forall-toggle, .qcapture, .qshots, .qgroupc {
     flex: 0 0 auto;
     align-self: center;
     display: flex; align-items: center; justify-content: center;
@@ -621,8 +638,8 @@
   }
   .qedit svg { width: 15px; height: 15px; }
   .forall-toggle svg { width: 17px; height: 17px; }
-  .qcapture svg, .qshots svg { width: 16px; height: 16px; }
-  .qedit:hover, .forall-toggle:hover, .qcapture:hover, .qshots:hover {
+  .qcapture svg, .qshots svg, .qgroupc svg { width: 16px; height: 16px; }
+  .qedit:hover, .forall-toggle:hover, .qcapture:hover, .qshots:hover, .qgroupc:hover {
     color: var(--accent); border-color: #c7d7f5; background: #f0f5ff;
   }
   .qedit.on:hover { color: #15803d; border-color: #bfe3cc; background: #e7f6ec; }
@@ -1102,6 +1119,37 @@
     </button>
     <button type="button" class="expact" id="expOk" title="Export the printable grade slips"
             aria-label="Export">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polyline points="20 6 9 17 4 12"/>
+      </svg>
+    </button>
+  </div>
+</div>
+
+<!-- One comment per group, at one question, for every student of that group (see
+     openGroupComment). The rows are built when it opens: one per group. -->
+<div id="gcBack"></div>
+<div id="gcBox" role="dialog" aria-label="A comment for each group at this question">
+  <div id="gcHead">
+    <svg class="rngicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z"/>
+      <path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1"/>
+    </svg>
+    <span id="gcTitle"></span>
+  </div>
+  <div id="gcRows"></div>
+  <div id="gcBar">
+    <span class="gap"></span>
+    <button type="button" class="secondary expact" id="gcCancel" title="Cancel" aria-label="Cancel">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+      </svg>
+    </button>
+    <button type="button" class="expact" id="gcOk"
+            title="Add each comment to its group's students" aria-label="Add the comments">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <polyline points="20 6 9 17 4 12"/>
@@ -2216,6 +2264,7 @@ function buildQuestionBlock(q, disableUp, disableDown, isDraft) {
     combo.appendChild(comment);
     block.appendChild(combo);
 
+    block.appendChild(buildGroupCommentButton(key));
     block.appendChild(buildCaptureButton(key));
     const shotsBtn = buildShotsButton(key);
     if (shotsBtn) block.appendChild(shotsBtn);
@@ -2300,6 +2349,21 @@ function shotsFor(key) {
 }
 
 // The capture button. Always present, pressed in while it is the armed one.
+// Opens the group comment for this question (see openGroupComment): the two bubbles of the
+// range feedback, which does the same for the feedback.
+function buildGroupCommentButton(key) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "qgroupc";
+  btn.tabIndex = -1;
+  btn.dataset.key = key;
+  btn.title = "Add a comment to every student of a group at this question";
+  btn.setAttribute("aria-label", "Comment for each group");
+  btn.appendChild(svgIcon('<path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z"/>' +
+                          '<path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1"/>'));
+  return btn;
+}
+
 function buildCaptureButton(key) {
   const btn = document.createElement("button");
   btn.type = "button";
@@ -5115,6 +5179,108 @@ function confirmRangeFeedback() {
   }
 }
 
+// ---- The group comment dialog ----
+// One comment per group at one question — "Signe oublié" for subject A, "Bien vu" for B — added
+// at the end of the comment of every student of that group there, as the range feedback does
+// for the feedback. Students without a group are a group of their own ("—"); with no groups
+// at all, a single row stands for everyone. A student whose scheme has not got the question
+// is left out: there is no comment of theirs to add to.
+const gcBack = document.getElementById("gcBack");
+const gcBox = document.getElementById("gcBox");
+const gcRows = document.getElementById("gcRows");
+const gcOk = document.getElementById("gcOk");
+let gcOpen = false;
+let gcKey = null;              // the question the dialog is for
+
+// The students a row speaks for: those of `group` ("" = no group) who have the question.
+function groupCommentStudents(key, group) {
+  return students.filter(name => (groupByStudent[name] || "") === group
+                                 && schemeFor(name).some(q => qKey(q) === key));
+}
+
+function openGroupComment(key) {
+  if (students.length === 0) {
+    alert("No students yet.");
+    return;
+  }
+  closeCombo();                 // nothing should hang over the dialog
+  saveCurrentStudent();         // a half-typed comment is the one added to
+  const q = schemeQuestions.find(q => qKey(q) === key);
+  gcKey = key;
+  document.getElementById("gcTitle").textContent = q ? q.title : key;
+  const groups = studentGroups();
+  const rows = groups.map(g => ({ group: g, label: g }));
+  if (students.some(n => !groupByStudent[n]))
+    rows.push({ group: "", label: groups.length ? "\u2014" : "All students" });
+  gcRows.replaceChildren();
+  for (const row of rows) {
+    const n = groupCommentStudents(key, row.group).length;
+    if (n === 0) continue;      // nobody there has this question
+    const name = document.createElement("span");
+    name.className = "gcGroup";
+    name.innerHTML = groupIcon();
+    name.appendChild(document.createTextNode(row.label));   // a name is text, never markup
+    const count = document.createElement("span");
+    count.className = "gcCount";
+    count.title = "Students of this group at this question";
+    count.appendChild(svgIcon('<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>'));
+    count.appendChild(document.createTextNode("\u00d7" + n));   // the student icon, so many times
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "gcText";
+    input.autocomplete = "off";
+    input.dataset.group = row.group;
+    input.setAttribute("aria-label", "Comment for " + row.label);
+    input.addEventListener("input", paintGroupComment);
+    gcRows.append(name, count, input);
+  }
+  gcOpen = true;
+  gcBack.classList.add("open");
+  gcBox.classList.add("open");
+  paintGroupComment();
+  const first = gcRows.querySelector(".gcText");
+  if (first) first.focus();
+}
+
+// The tick only means something once a box says something.
+function paintGroupComment() {
+  gcOk.disabled = ![...gcRows.querySelectorAll(".gcText")].some(el => el.value.trim());
+}
+
+function closeGroupComment() {
+  gcOpen = false;
+  gcBack.classList.remove("open");
+  gcBox.classList.remove("open");
+  if (gcBox.contains(document.activeElement)) document.activeElement.blur();
+}
+
+// The dialog's tick. A student whose comment already says the phrase is passed over, so a
+// second press adds nothing.
+function confirmGroupComment() {
+  const key = gcKey;
+  const boxes = [...gcRows.querySelectorAll(".gcText")].filter(el => el.value.trim());
+  if (!gcOpen || key === null || boxes.length === 0) return;
+  saveCurrentStudent();
+  const own = () => ((commentsByStudent[currentStudent] || {})[key]) || "";
+  const before = own();
+  for (const box of boxes) {
+    const text = box.value.trim();
+    for (const name of groupCommentStudents(key, box.dataset.group)) {
+      const comments = commentsByStudent[name] || (commentsByStudent[name] = {});
+      const cur = comments[key] || "";
+      if (cur.indexOf(text) < 0) comments[key] = joinPhrase(cur, text);
+    }
+  }
+  closeGroupComment();
+  if (currentStudent && own() !== before) {
+    const input = questionsEl.querySelector('.question .qcomment[data-key="' + cssEscape(key) + '"]');
+    if (input) {
+      input.value = own();
+      kbFlashSaved(input);
+    }
+  }
+}
+
 // =====================================================================
 // Wiring
 // =====================================================================
@@ -5395,6 +5561,8 @@ questionsEl.addEventListener("dblclick", e => {
 questionsEl.addEventListener("click", e => {
   const cap = e.target.closest(".qcapture");
   if (cap) { toggleCaptureArm(cap.dataset.key); return; }
+  const gc = e.target.closest(".qgroupc");
+  if (gc) { openGroupComment(gc.dataset.key); return; }
   const sh = e.target.closest(".qshots");
   if (sh) { toggleShots(sh.dataset.key); return; }
   const del = e.target.closest(".qshot-del");
@@ -5466,6 +5634,10 @@ expBox.addEventListener("click", e => {
   if (e.target.closest(".expcompact")) { expCompact = !expCompact; paintExportOptions(); }
 });
 
+// ---- The group comment dialog's controls (it opens from each question's row) ----
+gcOk.addEventListener("click", confirmGroupComment);
+document.getElementById("gcCancel").addEventListener("click", closeGroupComment);
+
 // ---- The range feedback dialog's controls ----
 document.getElementById("rngOpenBtn").addEventListener("click", openRangeFeedback);
 rngOk.addEventListener("click", confirmRangeFeedback);
@@ -5501,6 +5673,11 @@ document.addEventListener("keydown", e => {
   if (rngOpen) {
     if (e.key === "Escape") { e.preventDefault(); closeRangeFeedback(); }
     else if (e.key === "Enter") { e.preventDefault(); confirmRangeFeedback(); }
+    return;
+  }
+  if (gcOpen) {
+    if (e.key === "Escape") { e.preventDefault(); closeGroupComment(); }
+    else if (e.key === "Enter") { e.preventDefault(); confirmGroupComment(); }
     return;
   }
   if (annState) {
@@ -5567,7 +5744,7 @@ pdfPane.addEventListener("scroll", () => {
 // the grading area), unless a combo list is open. The grading list can still be
 // scrolled by dragging its scrollbar.
 window.addEventListener("wheel", e => {
-  if (annState || expOpen || rngOpen) return;  // a dialog is open: the PDF behind it stays put
+  if (annState || expOpen || rngOpen || gcOpen) return;  // a dialog is open: the PDF behind it stays put
   if (!onlyScrollPdf.checked) return; // let the hovered area scroll natively
   if (e.defaultPrevented) return;     // already handled (a focused page box steps instead)
   if (comboPopup.classList.contains("open")) return; // a combo is open: scroll natively
@@ -5630,7 +5807,7 @@ document.addEventListener("keydown", e => {
   // A keystroke an input method is still composing into a character belongs to it alone: it
   // arrives before any character exists, so acting on it would grade or type the wrong thing.
   if (e.isComposing || e.keyCode === 229) return;
-  if (expOpen || annState || rngOpen) {   // a dialog owns the keyboard (see its own handler)
+  if (expOpen || annState || rngOpen || gcOpen) {   // a dialog owns the keyboard (see its own handler)
     // ...but it must not leak this one: the browser would drop a "save this page" window
     // over the dialog.
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") e.preventDefault();
