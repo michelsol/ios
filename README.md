@@ -106,3 +106,4 @@ La zone de notation peut se parcourir entièrement au clavier.
 * Pour recharger un travail précédent, importer la dernière sauvegarde (dossier en haut à droite), et rouvrir le PDF associé (dossier en haut à gauche).
 * Pour une appréciation commune à une tranche de notes (par ex. « Excellent travail ! » à partir de 16/20), cliquer sur les bulles au bout de la barre d'appréciation.
 * Pour un commentaire commun à tous les étudiants d'un groupe sur une question (par ex. une erreur fréquente au sujet A), cliquer sur les bulles de la question : une case par groupe.
+* Les commentaires et appréciations acceptent des formules LaTeX entre `$…$` (par ex. `$\frac{1}{2}$`), affichées en dehors de l'édition et à l'impression.

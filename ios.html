@@ -874,6 +874,23 @@
     .barStrip { height: 18px; }
     .barFold, #toolbar .barFold { width: 40px; height: 36px; }
   }
+  /* A comment's formulas, drawn over its text while it is not being typed in (see mathBox).
+     The layer lets clicks through to the box, whose own text turns transparent under it. */
+  .combo.mathable { position: relative; }
+  .qmath {
+    display: none;
+    position: absolute;
+    inset: 0;
+    align-items: center;
+    padding: 0 8px;            /* the box's own, so the text lines up */
+    pointer-events: none;
+    color: var(--text);
+  }
+  /* Clipped sideways only, with an ellipsis: a fraction may stand a little taller than a line. */
+  .qmath > span { min-width: 0; overflow-x: clip; overflow-y: visible; text-overflow: ellipsis; white-space: nowrap; }
+  .combo.has-math:not(:focus-within) .qmath { display: flex; }
+  .combo.has-math:not(:focus-within) .qcomment { color: transparent; }
+  #feedbackCombo .qmath { font-size: 14px; font-weight: 400; }
 </style>
 </head>
 <body>
@@ -1329,6 +1346,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <!-- pdf-lib, used to write the PDF back with rotated pages (pdf.js only reads). -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<!-- KaTeX turns the $…$ formulas of comments into MathML, which the browser draws itself:
+     no stylesheet and no fonts to fetch, so a saved page keeps it offline. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
 <script>
 "use strict";
 
@@ -1639,6 +1659,7 @@ function phraseBox(input, store) {
   input._comboItemScore = text => "×" + use(text).n;
   input._comboItemClass = text => (use(text).here ? "here" : "");
   input._comboClickToggles = true;
+  input._comboItemHTML = mathHTML;       // formulas drawn in the list (the tooltip keeps the text)
   input._phraseStore = store;
   // While a phrase is typed, the list opens on its top suggestion when that one starts with
   // what was typed — the one whose ending is written in (see showCompletion) — so Enter takes
@@ -2360,6 +2381,7 @@ function buildQuestionBlock(q, disableUp, disableDown, isDraft) {
     comment.addEventListener("change", () => onCommentChange(comment));
     redrawComboOnInput(comment);
     combo.appendChild(comment);
+    mathBox(comment);                    // its formulas drawn while not typed in
     block.appendChild(combo);
 
     const shotsBtn = buildShotsButton(key);
@@ -2757,7 +2779,10 @@ function openCombo(input) {
     }
     const label = document.createElement("span");
     label.className = "combo-label";
-    label.textContent = s;
+    // Optional markup for the text (a phrase list draws its formulas: see mathHTML); every
+    // other combobox shows it as plain text.
+    if (input._comboItemHTML) label.innerHTML = input._comboItemHTML(s);
+    else label.textContent = s;
     item.appendChild(label);
     // Optional greyed note after the text (the student list shows each student's group).
     const note = input._comboItemNote ? input._comboItemNote(s) : "";
@@ -4953,6 +4978,99 @@ function saveGrades() {
 // Export printable grade slips (one self-contained card per student)
 // =====================================================================
 
+// ---- Formulas in comments ----
+// A comment or a feedback may hold formulas between dollars, "$\frac{1}{2}$". They are drawn as
+// math wherever the text is shown and not being typed (see mathBox), in the suggestion lists
+// and on the printed slips; the text itself is kept as typed, in the save too. Pandoc's rule
+// tells a formula from a price: the opening $ is followed by a non-space, the closing one
+// follows a non-space and is not followed by a digit, so "5$ et 10$" stays text. "\$" is a
+// dollar, and a $ left without its match stays text — as does one whose formula does not parse,
+// so "5$; voir $x$" still finds $x$. Returns [{ text } | { tex }, ...].
+function mathParts(text) {
+  const s = String(text == null ? "" : text), parts = [];
+  let buf = "", i = 0;
+  while (i < s.length) {
+    if (s[i] === "\\" && s[i + 1] === "$") { buf += "$"; i += 2; continue; }
+    if (s[i] === "$" && s[i + 1] && !/\s/.test(s[i + 1])) {
+      const end = closingDollar(s, i + 1);
+      if (end > 0 && (!mathReady() || texHTML(s.slice(i + 1, end)))) {
+        if (buf) parts.push({ text: buf });
+        buf = "";
+        parts.push({ tex: s.slice(i + 1, end) });
+        i = end + 1;
+        continue;
+      }
+    }
+    buf += s[i++];
+  }
+  if (buf) parts.push({ text: buf });
+  return parts;
+}
+
+// Where the formula opened before `from` closes, or -1. It holds at least one character, and a
+// "\$" in it is a dollar sign of the formula's own.
+function closingDollar(s, from) {
+  for (let j = from; j < s.length; j++) {
+    if (s[j] === "\\") { j++; continue; }
+    if (s[j] === "$" && j > from && !/\s/.test(s[j - 1]) && !/[0-9]/.test(s[j + 1] || "")) return j;
+  }
+  return -1;
+}
+
+// Without KaTeX (offline, the page not saved), everything stays the text as typed.
+function mathReady() { return typeof katex !== "undefined"; }
+
+function hasMath(text) {
+  return mathReady() && mathParts(text).some(p => p.tex != null);
+}
+
+// One formula as MathML, or null when it does not parse. Kept, since the same few formulas are
+// drawn over and over (every student switch repaints the boxes).
+const texCache = new Map();
+function texHTML(tex) {
+  if (!texCache.has(tex)) {
+    let html = null;
+    try { html = katex.renderToString(tex, { output: "mathml", throwOnError: true, strict: "ignore" }); }
+    catch (e) { html = null; }
+    texCache.set(tex, html);
+  }
+  return texCache.get(tex);
+}
+
+// The text as markup: escaped, with its formulas drawn (see mathParts: they all parse).
+function mathHTML(text) {
+  if (!mathReady()) return htmlEscape(text);
+  return mathParts(text).map(p => p.tex == null ? htmlEscape(p.text) : texHTML(p.tex)).join("");
+}
+
+// A box draws its formulas while it is not being typed in: a layer over its text (see .qmath),
+// which a click passes through. The layer follows the box's value however it is set — a pick,
+// a student switch, the group comment, Escape — through the box's own `value`; while the box
+// is focused it shows the text as typed, and the layer is repainted on leaving it.
+function mathBox(input) {
+  const combo = input.parentElement;
+  const layer = document.createElement("div");
+  layer.className = "qmath";
+  layer.setAttribute("aria-hidden", "true");
+  const inner = document.createElement("span");
+  layer.appendChild(inner);
+  combo.appendChild(layer);
+  combo.classList.add("mathable");
+  const paint = () => {
+    const on = hasMath(input.value);
+    combo.classList.toggle("has-math", on);
+    inner.innerHTML = on ? mathHTML(input.value) : "";
+  };
+  const own = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
+  Object.defineProperty(input, "value", {
+    configurable: true,
+    get() { return own.get.call(this); },
+    set(v) { own.set.call(this, v); if (document.activeElement !== input) paint(); },
+  });
+  input.addEventListener("blur", paint);
+  paint();
+}
+
 // Escape a string for safe insertion into HTML text/attribute content.
 function htmlEscape(s) {
   s = (s === null || s === undefined) ? "" : String(s);
@@ -5005,7 +5123,7 @@ function buildGradesHTML(opts) {
       return (
         '<div class="qrow' + (graded ? '' : ' ungraded') + '">' +
           '<div class="qtitle">' + htmlEscape(q.title) + '</div>' +
-          (comment ? '<div class="qcomment">' + htmlEscape(comment) + '</div>' : '') +
+          (comment ? '<div class="qcomment">' + mathHTML(comment) + '</div>' : '') +
           '<div class="qpts">' + (graded ? htmlEscape(fmt(v)) : '&ndash;') + ' / ' + htmlEscape(fmt(q.max)) + '</div>' +
           (shots.length
             ? '<div class="qshots">' +
@@ -5051,7 +5169,7 @@ function buildGradesHTML(opts) {
         (rows ? '<div class="questions">' + rows + '</div>' : '') +
         // Last row: feedback on the left, total on the right (total alone if no feedback).
         '<div class="sumrow">' +
-          (feedback ? '<div class="feedback">' + htmlEscape(feedback) + '</div>' : '') +
+          (feedback ? '<div class="feedback">' + mathHTML(feedback) + '</div>' : '') +
           '<div class="total">' + htmlEscape(fmt(total.sum)) + ' / ' + htmlEscape(fmt(total.max)) + '</div>' +
         '</div>' +
       '</div>'
@@ -5600,6 +5718,7 @@ const storeFeedback = () => {
 globalFeedback._comboSelect = (val) => { pickPhrase(globalFeedback, val); storeFeedback(); };
 phraseBox(globalFeedback, storeFeedback);   // like the comment boxes: a click or typing unfolds it
 redrawComboOnInput(globalFeedback);
+mathBox(globalFeedback);
 
 // Zoom controls.
 document.getElementById("btnPdfZoomIn").addEventListener("click", () => zoomPdf(1.2));
