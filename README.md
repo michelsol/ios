@@ -48,7 +48,7 @@ L'interface s'ouvre avec un lot de copies déjà chargé, prêt à corriger. Rie
 
    * Sélectionner l'étudiant correspondant
    * Appuyer sur la feuille avec un point rouge, pour associer la page du PDF, à cet étudiant.
-   * Le crayon à droite de l'étudiant permet de modifier son nom, sa page et son groupe (par ex. sujet A ou B). Pendant la modification, la feuille avec un point rouge reporte la page affichée.
+   * Le crayon à droite de l'étudiant permet de modifier le groupe (par ex. sujet A ou B).
    * En cas de mauvais ordre ou orientation, il est possible de modifier le PDF en haut à gauche.
 6. Il est possible de trier la liste des étudiants aléatoirement, puis par groupe (pour mettre les sujets A avant les sujets B), dans la toolbar de la liste des étudiants.
 7. Enregistrer (Ctrl + S) en cliquant sur le bouton de sauvegarde sur la partie droite.
@@ -56,7 +56,7 @@ Les sauvegardes sont des fichiers ODS manuellement lisibles, et modifiables avec
 
 ### Notation
 
-1. Noter les copies en faisant des sauvegardes régulières (Ctrl + S). Il est préférable de désactiver l'ouverture automatique des fichiers téléchargés.
+1. Noter les copies en faisant des sauvegardes régulières (Ctrl + S).
 
    * La correction peut se faire de façon transversale en traitant toutes les copies successivement, pour chaque question ou petit groupe de questions dépendantes.
    * En cas de correction transversale, penser à enclencher la feuille avec un point rouge, pour garder en mémoire la position précise du défilement dans le PDF pour chaque étudiant.
@@ -96,6 +96,7 @@ La zone de notation peut se parcourir entièrement au clavier.
 |Retour arrière / Suppr|effacer la note de la question|
 |Espace|éditer le commentaire de la question courante|
 |Maj + Espace|spécifier une note manuellement|
+|g|modifier les commentaires communs aux groupes pour la question courante|
 |Maj + ↑ / ↓ · Maj + k / j|faire défiler le PDF|
 |Page préc. / suiv.|page précédente / suivante du PDF|
 |Ctrl + S|enregistrer les notes au format ODS|
@@ -105,5 +106,5 @@ La zone de notation peut se parcourir entièrement au clavier.
 
 * Pour recharger un travail précédent, importer la dernière sauvegarde (dossier en haut à droite), et rouvrir le PDF associé (dossier en haut à gauche).
 * Pour une appréciation commune à une tranche de notes (par ex. « Excellent travail ! » à partir de 16/20), cliquer sur les bulles au bout de la barre d'appréciation.
-* Pour un commentaire commun à tous les étudiants d'un groupe sur une question (par ex. une erreur fréquente au sujet A), cliquer sur les bulles de la question : une case par groupe.
-* Les commentaires et appréciations acceptent des formules LaTeX entre `$…$` (par ex. `$\frac{1}{2}$`), affichées en dehors de l'édition et à l'impression.
+* Pour un commentaire commun à tous les étudiants d'un groupe sur une question (par ex. pour inclure la réponse), cliquer sur les bulles de la question.
+* Les commentaires et appréciations acceptent des formules LaTeX entre `$…$` (par ex. `$\frac{1}{2}$`).

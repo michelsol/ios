@@ -1265,7 +1265,7 @@
       </svg>
     </button>
     <button type="button" class="expact" id="gcOk"
-            title="Add each comment to its group's students" aria-label="Add the comments">
+            title="Apply each group's shared comments" aria-label="Apply the comments">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <polyline points="20 6 9 17 4 12"/>
@@ -2510,7 +2510,7 @@ function buildGroupCommentButton(key) {
   btn.className = "qgroupc";
   btn.tabIndex = -1;
   btn.dataset.key = key;
-  btn.title = "Add a comment to every student of a group at this question";
+  btn.title = "Edit the comments every student of a group shares at this question";
   btn.setAttribute("aria-label", "Comment for each group");
   btn.appendChild(svgIcon('<path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z"/>' +
                           '<path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1"/>'));
@@ -5446,11 +5446,13 @@ function confirmRangeFeedback() {
 }
 
 // ---- The group comment dialog ----
-// One comment per group at one question — "Signe oublié" for subject A, "Bien vu" for B — added
-// at the end of the comment of every student of that group there, as the range feedback does
-// for the feedback. Students without a group are a group of their own ("—"); with no groups
-// at all, a single row stands for everyone. A student whose scheme has not got the question
-// is left out: there is no comment of theirs to add to.
+// The comments a whole group shares at one question — "Signe oublié" for subject A, "Bien vu"
+// for B — edited in one box per group. A box opens on the phrases (the pieces cut at ";") that
+// every student of the group has there; the tick adds a phrase typed in to each of them who
+// lacks it, and takes one cleared out of the box out of all of them. What a student has of
+// their own is left alone. Students without a group are a group of their own ("—"); with no
+// groups at all, a single row stands for everyone. A student whose scheme has not got the
+// question is left out: there is no comment of theirs to edit.
 const gcBack = document.getElementById("gcBack");
 const gcBox = document.getElementById("gcBox");
 const gcRows = document.getElementById("gcRows");
@@ -5464,13 +5466,27 @@ function groupCommentStudents(key, group) {
                                  && schemeFor(name).some(q => qKey(q) === key));
 }
 
+// The phrases every one of those students has at the question, in the first one's order.
+function sharedPhrases(key, group) {
+  const lists = groupCommentStudents(key, group).map(name =>
+    splitPhrases(((commentsByStudent[name] || {})[key]) || ""));
+  if (lists.length === 0) return [];
+  const shared = lists[0].filter(p => lists.every(list => list.includes(p)));
+  return [...new Set(shared)];
+}
+
+// Whether a box says something else than what it opened on: the phrases, not the spacing.
+function groupCommentChanged(input) {
+  return splitPhrases(input.value).join(";") !== input._shared.join(";");
+}
+
 function openGroupComment(key) {
   if (students.length === 0) {
     alert("No students yet.");
     return;
   }
   closeCombo();                 // nothing should hang over the dialog
-  saveCurrentStudent();         // a half-typed comment is the one added to
+  saveCurrentStudent();         // a half-typed comment is the one edited
   const q = schemeQuestions.find(q => qKey(q) === key);
   gcKey = key;
   document.getElementById("gcTitle").textContent = q ? q.title : key;
@@ -5498,6 +5514,8 @@ function openGroupComment(key) {
     input.className = "gcText";
     input.autocomplete = "off";
     input.dataset.group = row.group;
+    input._shared = sharedPhrases(key, row.group);   // what the tick compares the box with
+    input.value = input._shared.join("; ");
     input.title = "Comment for " + (row.label || "all students");
     input.setAttribute("aria-label", input.title);
     input.addEventListener("input", paintGroupComment);
@@ -5508,12 +5526,15 @@ function openGroupComment(key) {
   gcBox.classList.add("open");
   paintGroupComment();
   const first = gcRows.querySelector(".gcText");
-  if (first) first.focus();
+  if (first) {
+    first.focus();
+    first.setSelectionRange(first.value.length, first.value.length);   // on to type a phrase more
+  }
 }
 
-// The tick only means something once a box says something.
+// The tick only means something once a box says something else — a box cleared included.
 function paintGroupComment() {
-  gcOk.disabled = ![...gcRows.querySelectorAll(".gcText")].some(el => el.value.trim());
+  gcOk.disabled = ![...gcRows.querySelectorAll(".gcText")].some(groupCommentChanged);
 }
 
 function closeGroupComment() {
@@ -5523,21 +5544,27 @@ function closeGroupComment() {
   if (gcBox.contains(document.activeElement)) document.activeElement.blur();
 }
 
-// The dialog's tick. A student whose comment already says the phrase is passed over, so a
-// second press adds nothing.
+// The dialog's tick. Against what each box opened on: a phrase gone from it goes from every
+// student of its group, and a new one is added after the others to each of them who lacks it —
+// so a phrase reworded moves to the end. A student whose phrases come out the same is not
+// rewritten at all.
 function confirmGroupComment() {
   const key = gcKey;
-  const boxes = [...gcRows.querySelectorAll(".gcText")].filter(el => el.value.trim());
+  const boxes = [...gcRows.querySelectorAll(".gcText")].filter(groupCommentChanged);
   if (!gcOpen || key === null || boxes.length === 0) return;
   saveCurrentStudent();
   const own = () => ((commentsByStudent[currentStudent] || {})[key]) || "";
   const before = own();
   for (const box of boxes) {
-    const text = box.value.trim();
+    const now = splitPhrases(box.value);
+    const removed = box._shared.filter(p => !now.includes(p));
+    const added = now.filter(p => !box._shared.includes(p));
     for (const name of groupCommentStudents(key, box.dataset.group)) {
       const comments = commentsByStudent[name] || (commentsByStudent[name] = {});
-      const cur = comments[key] || "";
-      if (cur.indexOf(text) < 0) comments[key] = joinPhrase(cur, text);
+      const cur = splitPhrases(comments[key]);
+      const next = cur.filter(p => !removed.includes(p));
+      for (const p of added) if (!next.includes(p)) next.push(p);
+      if (next.join(";") !== cur.join(";")) comments[key] = next.join("; ");
     }
   }
   closeGroupComment();
@@ -6250,11 +6277,22 @@ document.addEventListener("keydown", e => {
     case "Escape":
       if (kbCursor) { kbCursor = null; paintKbCursor(false); e.preventDefault(); }
       return;
+    case "g":
+    case "G":                             // Caps Lock changes nothing, as for the home row
+      // The cursored question's group comment (see openGroupComment), as its ⋯ button would
+      // open it. Held back, the "g" is not typed into the dialog's first box, which takes the
+      // keys. kbOwnsKey still holds — a focused button keeps its own keys.
+      if (kbOwnsKey() && !e.altKey) {
+        const r = kbResolve();
+        if (r && r.row !== totalBar) { openGroupComment(r.row.dataset.key); e.preventDefault(); }
+      }
+      return;
     default:
       // A digit grades the row, and the same digit again moves on to the next key with it. It
       // reads the character the layout produced and never the key that produced it: on an
       // AZERTY keyboard "é" and "2" are one key, and Shift is the whole of the difference.
-      // Nothing else here is ours: a letter is left alone, Space being the way into a comment.
+      // Nothing else here is ours: a letter is left alone ("g" aside), Space being the way into
+      // a comment.
       if (e.key >= "0" && e.key <= "9" && e.key.length === 1 && kbDigit(e.key, run))
         e.preventDefault();
   }
