@@ -3387,6 +3387,7 @@ function switchToStudent(name) {
   cancelCapture();            // an armed capture belongs to the student it was armed on
   editingKey = null;          // an open edit row belongs to the student it was opened on
   editingDraft = null;
+  if ((name || "") !== currentStudent) pdfPosDue = true;   // another student: their page
   currentStudent = name || "";
   schemeQuestions = schemeFor(currentStudent);
   renderQuestions();          // its tail calls loadStudent() to apply stored values
@@ -3617,6 +3618,7 @@ function loadWorkbook(s) {
   currentStudent = students.length ? students[0] : "";
   schemeQuestions = schemeFor(currentStudent);
   studentSelect.value = currentStudent;
+  pdfPosDue = true;           // a file opens on its first student, at their page
   renderQuestions();          // its tail calls loadStudent() to apply values
   updateNavButtons();
 }
@@ -3662,14 +3664,17 @@ function loadStudent(name) {
   recomputeTotal();
   recomputeSubtotals();
 
-  // Bring the PDF back to this student's position. Mid-render the page offsets aren't
-  // final, so the render scrolls there once it is done. A student with no position yet
-  // leaves the PDF in place (the page button gives them one).
+  // Bring the PDF back to this student's position — only when another student is shown or a
+  // file was loaded (pdfPosDue): every rebuild of the list comes through here too (a question
+  // added, edited or moved), and must leave the PDF where the teacher is reading. Mid-render
+  // the page offsets aren't final, so the render scrolls there once it is done. A student with
+  // no position yet leaves the PDF in place (the page button gives them one).
   const target = currentStudent ? scrollPosByStudent[currentStudent] : null;
-  if (target >= 1) {
+  if (target >= 1 && pdfPosDue) {
     if (pdfRendering) pendingPdfPos = target;
     else scrollPdfTo(target);
   }
+  pdfPosDue = false;
   showStudentPage();
   refreshPositionButton();
 }
@@ -3948,6 +3953,7 @@ const PDF_BASE_SCALE = 1.5; // scale at 100%
 let renderToken = 0;        // guards against overlapping re-renders
 let pdfRendering = false;   // a drawPages is in flight: page offsets aren't final yet
 let pendingPdfPos = 1;      // where that render scrolls once done (see scrollPdfTo)
+let pdfPosDue = true;       // the next loadStudent brings the PDF to the student (see there)
 let pdfBytes = null;        // the original file (Uint8Array), rewritten by savePdf
 let pdfFileName = "";       // the opened file's name, reused when saving
 let pageRotation = {};      // { original 1-based page: extra clockwise degrees (0/90/180/270) }
