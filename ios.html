@@ -6332,12 +6332,22 @@ document.addEventListener("keydown", e => {
         if (r && r.row !== totalBar) { openGroupComment(r.row.dataset.key); e.preventDefault(); }
       }
       return;
+    case "n":
+    case "N":                             // Caps Lock changes nothing, as for the home row
+      // The current student's edit mode (see beginStudentEdit), as the pencil would open it: the
+      // name box takes the keys, selected; Enter applies, Escape leaves. Held back, the "n" is
+      // not typed over the selected name. kbOwnsKey still holds — a focused button keeps its keys.
+      if (kbOwnsKey() && !e.altKey && currentStudent && !studentEdit) {
+        beginStudentEdit();
+        e.preventDefault();
+      }
+      return;
     default:
       // A digit grades the row, and the same digit again moves on to the next key with it. It
       // reads the character the layout produced and never the key that produced it: on an
       // AZERTY keyboard "é" and "2" are one key, and Shift is the whole of the difference.
-      // Nothing else here is ours: a letter is left alone ("g" aside), Space being the way into
-      // a comment.
+      // Nothing else here is ours: a letter is left alone ("g" and "n" aside), Space being the
+      // way into a comment.
       if (e.key >= "0" && e.key <= "9" && e.key.length === 1 && kbDigit(e.key, run))
         e.preventDefault();
   }
