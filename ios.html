@@ -268,7 +268,7 @@
   .combo:focus-within { border-color: var(--accent); }
   /* The text box of a combo. The edit row's group box is one too, but must not be a
      ".qcomment" — that class is what saveCurrentStudent() collects comments from. */
-  .qcomment, .qedit-group, .qscorebox {
+  .qcomment, .qedit-group, .qedit-scores, .qscorebox {
     flex: 1 1 auto;
     min-width: 0;
     font: inherit;
@@ -277,7 +277,7 @@
     background: transparent;
     color: var(--text);
   }
-  .qcomment:focus, .qedit-group:focus, .qscorebox:focus { outline: none; }
+  .qcomment:focus, .qedit-group:focus, .qedit-scores:focus, .qscorebox:focus { outline: none; }
   .qscorebox { text-align: center; font-variant-numeric: tabular-nums; font-weight: 700; }
   .combo-arrow {
     flex: 0 0 auto;
@@ -606,8 +606,7 @@
   #addQuestionBar button { flex: 1 1 auto; }
   /* A question row opened for editing: its definition (title, scores, group) instead of
      its options, plus the controls that only belong here. */
-  .question.editing .qedit-title,
-  .question.editing .qedit-scores {
+  .question.editing .qedit-title {
     font: inherit;
     padding: 7px 8px;
     border: 1px solid var(--border);
@@ -617,8 +616,10 @@
     min-width: 0;
   }
   .question.editing .qedit-title  { flex: 2 1 120px; }
-  .question.editing .qedit-scores { flex: 3 1 160px; }
   .question.editing .qedit-combo  { flex: 2 1 110px; min-width: 0; }
+  .question.editing .qscores-combo { flex: 3 1 160px; }
+  /* A rejected spec reddens the frame, which is the combo's rather than the box's. */
+  .qscores-combo:has(.qedit-invalid) { border-color: #b91c1c; }
   .qedit-invalid, .qedit-invalid:focus {   /* rejected on apply: fix it or discard the row */
     border-color: #b91c1c !important;
     outline: 1px solid #b91c1c;
@@ -2015,6 +2016,17 @@ function beginEdit(key) {
 // show, so "+" then apply already yields a sensible question with nothing typed at all.
 const FIRST_QUESTION = { title: "1.", scores: "0 1 | 0.25 0.5 0.75" };
 
+// The common scales the scores box offers when clicked (see buildQuestionBlock).
+const SCORE_PRESETS = [
+  "0 0.5 | 0.25",
+  "0 1 | 0.5 0.25 0.75",
+  "0 0.5 1 | 0.25 0.75",
+  "0 0.5 1 1.5 | 0.25 0.75 1.25",
+  "0 0.5 1 1.5 2 | 0.25 0.75 1.25 1.75",
+  "0 1 2 | 0.5 1.5 0.25 0.75 1.25 1.75",
+  "0 1 2 3 | 0.5 1.5 2.5 0.25 0.75 1.25 1.75 2.25 2.75",
+];
+
 // Append a new question row in edit mode. It borrows the last question's group and score
 // layout (a section usually shares one scale); with no question to borrow from, it opens as
 // the worked example above. Nothing is created until the row is applied.
@@ -2296,7 +2308,21 @@ function buildQuestionBlock(q, disableUp, disableDown, isDraft) {
       sinput.title = "Possible scores, in the order they should appear. "
                    + "Scores after a | have no button: they live only in the score box.";
       sinput.value = scoreSpecText(q);
-      block.appendChild(sinput);
+      sinput.autocomplete = "off";
+      // A click unfolds the common scales (no arrow, like the comment boxes), and a second one
+      // folds them. A pick replaces the box's text and leaves it the keys, so Enter or the tick
+      // applies it. Typing is a scale of one's own: the list gives way.
+      const tidy = s => String(s).replace(/\s+/g, " ").trim();
+      sinput._comboItems = () => SCORE_PRESETS;
+      sinput._comboSelect = (v) => { sinput.value = v; };
+      sinput._comboClickToggles = true;
+      sinput._comboFitWidth = true;      // the long scales are read whole, not cut short
+      sinput._comboStartIndex = items => items.indexOf(tidy(sinput.value));   // the scale it has
+      sinput.addEventListener("input", () => { if (activeComboInput === sinput) closeCombo(); });
+      const scombo = document.createElement("div");
+      scombo.className = "combo qedit-combo qscores-combo";
+      scombo.appendChild(sinput);
+      block.appendChild(scombo);
 
       const gcombo = document.createElement("div");
       gcombo.className = "combo qedit-combo";
@@ -2852,7 +2878,17 @@ function positionCombo() {
   // The rectangle below is in screen pixels; `zoom: z` multiplies back whatever we set here.
   const px = (v) => (v / z) + "px";
   comboPopup.style.left = px(r.left);
-  comboPopup.style.width = px(r.width);
+  // Optional, like the other _combo* hooks: a list whose rows are longer than its box (the
+  // scales of the scores box) grows to fit them, from the box's width up to the window's edge.
+  // Every other list is exactly as wide as its box.
+  if (activeComboInput._comboFitWidth) {
+    comboPopup.style.width = "max-content";
+    comboPopup.style.minWidth = px(r.width);
+    comboPopup.style.maxWidth = px(Math.max(r.width, window.innerWidth - r.left - 8));
+  } else {
+    comboPopup.style.width = px(r.width);
+    comboPopup.style.minWidth = comboPopup.style.maxWidth = "";
+  }
   const spaceBelow = window.innerHeight - r.bottom;
   const spaceAbove = r.top;
   // Flip the popup above the input when there's little room below (e.g. the
@@ -5898,6 +5934,9 @@ questionsEl.addEventListener("click", e => {
 // Enter applies the edited question, Escape leaves it as it was (and drops a new one).
 questionsEl.addEventListener("keydown", e => {
   if (!e.target.closest || !e.target.closest(".question.editing")) return;
+  // A row highlighted in the scores' or the group's list: Enter picks it (the document's
+  // handler does), and the next Enter applies.
+  if (e.key === "Enter" && comboPopup.classList.contains("open") && comboIndex >= 0) return;
   if (e.key === "Enter") { e.preventDefault(); commitEdit(); }
   else if (e.key === "Escape" && !comboPopup.classList.contains("open")) {
     e.preventDefault();
