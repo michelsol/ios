@@ -3854,8 +3854,11 @@ function openStudentEdit(isNew, name, page, group) {
   seGroup.value = group;
   seRemove.title = isNew ? "Discard this new student" : "Remove this student";
   paintStudentEdit();
-  seName.focus();
-  seName.select();
+  // An existing student: the keys start in the group, the field most often changed (a name is
+  // rarely retyped). A new one has no name yet, so the keys start there.
+  const first = isNew ? seName : seGroup;
+  first.focus();
+  first.select();
 }
 
 // The pencil: edit the current student.

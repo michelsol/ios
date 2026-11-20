@@ -97,7 +97,7 @@ La zone de notation peut se parcourir entièrement au clavier.
 |Espace|éditer le commentaire de la question courante|
 |Maj + Espace|spécifier une note manuellement|
 |g|modifier les commentaires communs aux groupes pour la question courante|
-|n|modifier l'étudiant courant (nom, page, groupe)|
+|n|modifier l'étudiant courant (groupe, nom, page)|
 |Maj + ↑ / ↓ · Maj + k / j|faire défiler le PDF|
 |Page préc. / suiv.|page précédente / suivante du PDF|
 |Ctrl + S|enregistrer les notes au format ODS|
